@@ -25,7 +25,7 @@ export default function EmailListItem({ email }: EmailListItemProps) {
   return (
     <Link
       href={`/dashboard/email/${email.id}`}
-      className="block group outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-lg"
+      className="block group outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-lg h-full"
     >
       <Card className="hover:shadow-lg transition-shadow duration-200 ease-in-out cursor-pointer group-hover:border-primary h-full">
         <CardHeader>
