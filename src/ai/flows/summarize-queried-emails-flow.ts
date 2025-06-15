@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview A flow that generates an overall summary from a list of queried email summaries.
@@ -9,18 +10,17 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import type { QueriedEmail } from '@/types'; // Using existing QueriedEmail type
 
 const SummarizeQueriedEmailsInputSchema = z.object({
-  queriedEmails: z
+  queriedEmails: z // These are emails already processed by queryEmails flow
     .array(
-      z.object({
+      z.object({ 
         sender: z.string().describe('The sender of the email.'),
         subject: z.string().describe('The subject of the email.'),
-        summary: z.string().describe('The individual summary of the email content.'),
+        summary: z.string().describe('The individual AI-generated summary of the email (based on its snippet from Gmail).'),
       })
     )
-    .describe('A list of individually summarized emails from a user query.'),
+    .describe('A list of individually summarized emails, based on snippets from a user query to Gmail.'),
 });
 export type SummarizeQueriedEmailsInput = z.infer<typeof SummarizeQueriedEmailsInputSchema>;
 
@@ -37,23 +37,23 @@ const prompt = ai.definePrompt({
   name: 'summarizeQueriedEmailsPrompt',
   input: { schema: SummarizeQueriedEmailsInputSchema },
   output: { schema: SummarizeQueriedEmailsOutputSchema },
-  prompt: `You are an AI assistant tasked with creating a high-level synthesis from a list of email summaries.
-The user has performed a query and received several emails, each already summarized.
-Your goal is to provide an "executive summary" of these summaries.
+  prompt: `You are an AI assistant tasked with creating a high-level synthesis from a list of AI-generated email summaries.
+The user has performed a query against their Gmail, and received several emails. Each email's snippet has already been summarized by another AI.
+Your goal is to provide an "executive summary" of these individual summaries.
 
-Analyze the following email summaries:
+Analyze the following email summaries (which were based on snippets from actual Gmail emails):
 {{#each queriedEmails}}
 - Email from: {{sender}}
   Subject: {{subject}}
-  Summary: {{{summary}}}
+  Individual Summary (from snippet): {{{summary}}}
 ---
 {{/each}}
 
-Based on ALL the email summaries provided, generate a single, concise overall summary. This overall summary should:
+Based on ALL the individual email summaries provided, generate a single, concise overall summary. This overall summary should:
 - Identify common themes or topics that appear across multiple emails.
 - Highlight any critical information, deadlines, or collective action items that emerge from the set of emails.
 - Point out any notable patterns (e.g., multiple updates on the same project, recurring issues).
-- Be brief and easy to understand, giving the user a quick overview of what the queried emails are collectively about.
+- Be brief and easy to understand, giving the user a quick overview of what the queried emails are collectively about from their snippets.
 - Do not just list the summaries; synthesize them.
 - If there's only one email, the overall summary can be a slightly more contextualized version of its individual summary.
 - If no common themes or patterns are evident, briefly state that the emails cover diverse topics and perhaps pick out the 1-2 most important individual items.
@@ -69,7 +69,7 @@ const summarizeQueriedEmailsFlow = ai.defineFlow(
   },
   async (input: SummarizeQueriedEmailsInput) => {
     if (!input.queriedEmails || input.queriedEmails.length === 0) {
-      return { overallSummary: 'No emails were provided to summarize.' };
+      return { overallSummary: 'No email summaries were provided to synthesize.' };
     }
     const { output } = await prompt(input);
     return output!;

@@ -1,5 +1,6 @@
+
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, User, OAuthCredential } from 'firebase/auth';
 
 // Retrieve env variables
 const apiKeyFromEnv = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
@@ -13,7 +14,7 @@ const appIdFromEnv = process.env.NEXT_PUBLIC_FIREBASE_APP_ID;
 const placeholderApiKey = "AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXX"; // Generic placeholder
 const placeholderAuthDomain = "your-project-id.firebaseapp.com";
 const placeholderProjectId = "your-project-id";
-const placeholderStorageBucket = "your-project-id.appspot.com";
+const placeholderStorageBucket = "your-project-id.appspot.com"; // Corrected common placeholder
 const placeholderMessagingSenderId = "000000000000";
 const placeholderAppId = "1:000000000000:web:0000000000000000000000";
 
@@ -33,19 +34,19 @@ if (!apiKeyFromEnv || apiKeyFromEnv === placeholderApiKey || apiKeyFromEnv === '
 }
 
 const firebaseConfig = {
-  apiKey: apiKeyFromEnv, // Already validated
+  apiKey: apiKeyFromEnv,
   authDomain: authDomainFromEnv || placeholderAuthDomain,
   projectId: projectIdFromEnv || placeholderProjectId,
-  storageBucket: storageBucketFromEnv || placeholderStorageBucket,
+  storageBucket: storageBucketFromEnv || "mailsage-erevl.firebasestorage.app", 
   messagingSenderId: messagingSenderIdFromEnv || placeholderMessagingSenderId,
   appId: appIdFromEnv || placeholderAppId,
 };
 
-// WARNING FOR OTHER PLACEHOLDER VALUES (other than the critical API key)
+// WARNING FOR OTHER PLACEHOLDER VALUES
 const warnings = [];
 if (!authDomainFromEnv || authDomainFromEnv === placeholderAuthDomain) warnings.push("NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN");
 if (!projectIdFromEnv || projectIdFromEnv === placeholderProjectId) warnings.push("NEXT_PUBLIC_FIREBASE_PROJECT_ID");
-if (!storageBucketFromEnv || storageBucketFromEnv === placeholderStorageBucket) warnings.push("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET");
+if (!storageBucketFromEnv || storageBucketFromEnv === "mailsage-erevl.firebasestorage.app") warnings.push("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET may be using a hardcoded or placeholder value");
 if (!messagingSenderIdFromEnv || messagingSenderIdFromEnv === placeholderMessagingSenderId) warnings.push("NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID");
 if (!appIdFromEnv || appIdFromEnv === placeholderAppId) warnings.push("NEXT_PUBLIC_FIREBASE_APP_ID");
 
@@ -57,7 +58,7 @@ if (warnings.length > 0) {
     `  apiKey: ${firebaseConfig.apiKey ? firebaseConfig.apiKey.substring(0, 8) + "..." : "MISSING!"}\n` +
     `  authDomain: ${firebaseConfig.authDomain} (from env: ${authDomainFromEnv || 'MISSING'})\n` +
     `  projectId: ${firebaseConfig.projectId} (from env: ${projectIdFromEnv || 'MISSING'})\n` +
-    `  storageBucket: ${firebaseConfig.storageBucket} (from env: ${storageBucketFromEnv || 'MISSING'})\n` +
+    `  storageBucket: ${firebaseConfig.storageBucket} (from env: ${storageBucketFromEnv || 'MISSING or using fallback'})\n` +
     `  messagingSenderId: ${firebaseConfig.messagingSenderId} (from env: ${messagingSenderIdFromEnv || 'MISSING'})\n` +
     `  appId: ${firebaseConfig.appId} (from env: ${appIdFromEnv || 'MISSING'})\n\n` +
     "Ensure your apphosting.<ENVIRONMENT_NAME>.yaml (for deployed environments) or .env file (for local development) contains all correct NEXT_PUBLIC_ prefixed Firebase credentials from your Firebase project settings. " +
@@ -69,8 +70,8 @@ if (warnings.length > 0) {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
+// Add scope to request access to Gmail API
+googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
 
-// Add scope to request access to Gmail API if needed in future, for now just basic profile
-// googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
 
-export { auth, googleProvider, signInWithPopup, signOut, type User };
+export { auth, googleProvider, signInWithPopup, signOut, type User, type OAuthCredential };
