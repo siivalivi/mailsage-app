@@ -22,10 +22,10 @@ const QueryEmailsOutputSchema = z.object({
       z.object({
         sender: z.string().describe('The sender of the email.'),
         subject: z.string().describe('The subject of the email.'),
-        summary: z.string().describe('A short summary of the email content.'),
+        summary: z.string().describe('A structured and informative summary of the email content.'),
       })
     )
-    .describe('A list of emails matching the query.'),
+    .describe('A list of emails matching the query, each with a detailed summary.'),
 });
 export type QueryEmailsOutput = z.infer<typeof QueryEmailsOutputSchema>;
 
@@ -38,11 +38,18 @@ const prompt = ai.definePrompt({
   input: {schema: QueryEmailsInputSchema},
   output: {schema: QueryEmailsOutputSchema},
   prompt: `You are an AI assistant helping users to search their emails.
+Based on the user's query, retrieve a list of matching emails.
+For each email, provide:
+- Sender
+- Subject
+- A concise, structured summary of the email content. This summary should:
+    - Extract and highlight key information such as names of people or organizations, monetary amounts, specific dates or deadlines, and locations.
+    - Clearly list any explicit action items or questions directed at the recipient.
+    - If the email appears to be a bill, receipt, or financial statement, make sure to summarize the total amount, key items or services, and payment due dates if mentioned.
+    - Present information in an easy-to-scan format. Use bullet points for lists, action items, or breakdowns where appropriate.
+    - Aim for a balance between brevity and completeness of critical information. The goal is to give the user a quick but thorough understanding of the email's essence.
 
-  Based on the user's query, you should return a list of emails that match the query.
-  The email list should contain the sender, subject, and a short summary of the email content.
-
-  User Query: {{{query}}}
+User Query: {{{query}}}
   `,
 });
 
