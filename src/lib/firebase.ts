@@ -23,9 +23,10 @@ if (!apiKeyFromEnv || apiKeyFromEnv === placeholderApiKey) {
   const errorMsg = "CRITICAL FIREBASE CONFIGURATION ERROR: Firebase API Key (NEXT_PUBLIC_FIREBASE_API_KEY) is missing or is a placeholder ('" + apiKeyFromEnv + "'). " +
                    "The application cannot initialize Firebase. \n\n" +
                    "POTENTIAL CAUSES & SOLUTIONS:\n" +
-                   "1. Ensure your .env file in the project root is correctly populated with your actual Firebase project credentials. All keys must be prefixed with NEXT_PUBLIC_.\n" +
-                   "2. The application (especially in a deployed environment like GCP/Firebase App Hosting) MUST BE REBUILT AND REDEPLOYED, or the instance restarted, after .env file changes for them to take effect.\n" +
-                   "3. Double-check the variable name NEXT_PUBLIC_FIREBASE_API_KEY for typos in your .env file.\n\n" +
+                   "1. For local development: Ensure your .env file in the project root is correctly populated with your actual Firebase project credentials. All keys must be prefixed with NEXT_PUBLIC_.\n" +
+                   "2. For deployed environments (like Firebase App Hosting): This variable MUST be set in your hosting provider's environment variable configuration (e.g., apphosting.<env>.yaml file). Ensure your apphosting.<ENVIRONMENT_NAME>.yaml (e.g., apphosting.mailsageprod.yaml) correctly defines NEXT_PUBLIC_FIREBASE_API_KEY.\n" +
+                   "3. After setting the environment variable in a deployed environment (e.g., by modifying apphosting.<env>.yaml), you MUST REBUILD AND REDEPLOY your application for the changes to take effect.\n" +
+                   "4. Double-check the variable name NEXT_PUBLIC_FIREBASE_API_KEY for typos.\n\n" +
                    "Find your Firebase SDK setup and configuration details in: Firebase project settings -> General tab -> Your apps section.";
   console.error(errorMsg);
   throw new Error(errorMsg); // Halt execution to prevent further errors
@@ -40,25 +41,26 @@ const firebaseConfig = {
   appId: appIdFromEnv || placeholderAppId,
 };
 
-// WARNING FOR OTHER PLACEHOLDER VALUES
-if (firebaseConfig.authDomain === placeholderAuthDomain ||
-    firebaseConfig.projectId === placeholderProjectId ||
-    firebaseConfig.storageBucket === placeholderStorageBucket ||
-    firebaseConfig.messagingSenderId === placeholderMessagingSenderId ||
-    (firebaseConfig.appId === placeholderAppId && appIdFromEnv !== placeholderAppId) // Warn if appId is default due to missing env, but not if placeholderAppId was the actual (unlikely) env value
-   ) {
+// WARNING FOR OTHER PLACEHOLDER VALUES (other than the critical API key)
+if (
+  (authDomainFromEnv && authDomainFromEnv === placeholderAuthDomain) || !authDomainFromEnv ||
+  (projectIdFromEnv && projectIdFromEnv === placeholderProjectId) || !projectIdFromEnv ||
+  (storageBucketFromEnv && storageBucketFromEnv === placeholderStorageBucket) || !storageBucketFromEnv ||
+  (messagingSenderIdFromEnv && messagingSenderIdFromEnv === placeholderMessagingSenderId) || !messagingSenderIdFromEnv ||
+  (appIdFromEnv && appIdFromEnv === placeholderAppId && appIdFromEnv !== process.env.NEXT_PUBLIC_FIREBASE_APP_ID) || (!appIdFromEnv && process.env.NODE_ENV === 'production')
+) {
   console.warn(
-    "WARNING: One or more Firebase configuration values (e.g., Auth Domain, Project ID) might be using default placeholder values. " +
+    "WARNING: One or more non-critical Firebase configuration values (e.g., Auth Domain, Project ID) might be using default placeholder values or are missing from the environment. " +
     "This could lead to unexpected behavior if these services are used. \n\n" +
     "Effective Firebase Config (API Key shown partially for security):\n" +
     `  apiKey: ${firebaseConfig.apiKey ? firebaseConfig.apiKey.substring(0, 8) + "..." : "MISSING!"}\n` +
-    `  authDomain: ${firebaseConfig.authDomain}\n` +
-    `  projectId: ${firebaseConfig.projectId}\n` +
-    `  storageBucket: ${firebaseConfig.storageBucket}\n` +
-    `  messagingSenderId: ${firebaseConfig.messagingSenderId}\n` +
-    `  appId: ${firebaseConfig.appId}\n\n` +
-    "Ensure your .env file contains all correct NEXT_PUBLIC_ prefixed Firebase credentials from your Firebase project settings. " +
-    "If you've recently updated .env, a rebuild/redeploy of the application is likely necessary."
+    `  authDomain: ${firebaseConfig.authDomain} (from env: ${authDomainFromEnv || 'MISSING'})\n` +
+    `  projectId: ${firebaseConfig.projectId} (from env: ${projectIdFromEnv || 'MISSING'})\n` +
+    `  storageBucket: ${firebaseConfig.storageBucket} (from env: ${storageBucketFromEnv || 'MISSING'})\n` +
+    `  messagingSenderId: ${firebaseConfig.messagingSenderId} (from env: ${messagingSenderIdFromEnv || 'MISSING'})\n` +
+    `  appId: ${firebaseConfig.appId} (from env: ${appIdFromEnv || 'MISSING'})\n\n` +
+    "Ensure your apphosting.<env>.yaml (for deployed environments) or .env file (for local development) contains all correct NEXT_PUBLIC_ prefixed Firebase credentials from your Firebase project settings. " +
+    "If you've recently updated these, a rebuild/redeploy of the application is likely necessary."
   );
 }
 
@@ -71,3 +73,5 @@ const googleProvider = new GoogleAuthProvider();
 // googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
 
 export { auth, googleProvider, signInWithPopup, signOut, type User };
+
+    

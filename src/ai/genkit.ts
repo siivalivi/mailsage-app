@@ -1,3 +1,4 @@
+
 'use server';
 
 import {genkit} from 'genkit';
@@ -15,9 +16,9 @@ if (!googleApiKeyFromEnv && !geminiApiKeyFromEnv) {
     "Genkit requires this API key to communicate with Google AI services (e.g., Gemini).\n\n" +
     "POTENTIAL CAUSES & SOLUTIONS:\n" +
     "1. For local development: Ensure your .env file in the project root contains GOOGLE_API_KEY=<your_actual_api_key>.\n" +
-    "2. For deployed environments (like Firebase App Hosting): This variable MUST be set in your hosting provider's environment variable configuration.\n" +
-    "   - In Firebase App Hosting, go to your project -> App Hosting -> Your Backend -> Settings, and add GOOGLE_API_KEY with your valid API key value.\n" +
-    "3. After setting the environment variable in a deployed environment, you MUST REBUILD AND REDEPLOY your application for the changes to take effect.\n\n" +
+    "2. For deployed environments (like Firebase App Hosting): This variable MUST be set in your hosting provider's environment variable configuration (e.g., apphosting.<env>.yaml file).\n" +
+    "   - In Firebase App Hosting, ensure your apphosting.<ENVIRONMENT_NAME>.yaml file (e.g., apphosting.mailsageprod.yaml) correctly defines GOOGLE_API_KEY.\n" +
+    "3. After setting the environment variable in a deployed environment (e.g., by modifying apphosting.<env>.yaml), you MUST REBUILD AND REDEPLOY your application for the changes to take effect.\n\n" +
     "You can obtain an API key from Google AI Studio (MakerSuite) by visiting https://aistudio.google.com/app/apikey.";
   console.error(errorMsg);
   throw new Error(errorMsg); // Halt execution to prevent further errors
@@ -27,3 +28,5 @@ export const ai = genkit({
   plugins: [googleAI()], // This will automatically use GOOGLE_API_KEY or GEMINI_API_KEY from the environment
   model: 'googleai/gemini-2.0-flash', // Default model for the application
 });
+
+    
