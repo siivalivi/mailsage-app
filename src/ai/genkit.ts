@@ -1,4 +1,3 @@
-
 'use server';
 
 import {genkit} from 'genkit';
@@ -17,9 +16,8 @@ if ((!googleApiKeyFromEnv || googleApiKeyFromEnv.startsWith("YOUR_") || googleAp
     "Genkit requires this API key to communicate with Google AI services (e.g., Gemini).\n\n" +
     "POTENTIAL CAUSES & SOLUTIONS:\n" +
     "1. For local development: Ensure your .env file in the project root contains GOOGLE_API_KEY=<your_actual_api_key>.\n" +
-    "2. For deployed environments (like Firebase App Hosting): This variable MUST be set in your hosting provider's environment variable configuration (e.g., apphosting.<ENVIRONMENT_NAME>.yaml file).\n" +
-    "   - In Firebase App Hosting, ensure your apphosting.<ENVIRONMENT_NAME>.yaml file (e.g., apphosting.mailsageprod.yaml) correctly defines GOOGLE_API_KEY.\n" +
-    "3. After setting the environment variable, you MUST REBUILD AND REDEPLOY your application for the changes to take effect.\n\n" +
+    "2. For deployed environments (like Firebase App Hosting): This variable MUST be set in your hosting provider's environment variable configuration. In Firebase App Hosting, this is typically managed via the apphosting.<ENVIRONMENT_NAME>.yaml file (e.g., apphosting.mailsageprod.yaml). Ensure this file is correctly configured and deployed.\n" +
+    "3. After setting/modifying the environment variable (either in .env or apphosting.<env>.yaml), you MUST REBUILD AND REDEPLOY your application for the changes to take effect.\n\n" +
     "You can obtain an API key from Google AI Studio by visiting https://aistudio.google.com/app/apikey.\n" +
     "Current GOOGLE_API_KEY: " + googleApiKeyFromEnv + "\n" +
     "Current GEMINI_API_KEY: " + geminiApiKeyFromEnv;

@@ -1,4 +1,3 @@
-
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, User } from 'firebase/auth';
 
@@ -25,8 +24,8 @@ if (!apiKeyFromEnv || apiKeyFromEnv === placeholderApiKey || apiKeyFromEnv === '
     "The application cannot initialize Firebase. \n\n" +
     "POTENTIAL CAUSES & SOLUTIONS:\n" +
     "1. For local development: Ensure your .env file in the project root is correctly populated with NEXT_PUBLIC_FIREBASE_API_KEY and other Firebase credentials.\n" +
-    "2. For deployed environments (like Firebase App Hosting): Ensure your apphosting.<ENVIRONMENT_NAME>.yaml file (e.g., apphosting.mailsageprod.yaml) correctly defines NEXT_PUBLIC_FIREBASE_API_KEY.\n" +
-    "3. After setting/modifying environment variables, you MUST REBUILD AND REDEPLOY your application for the changes to take effect.\n" +
+    "2. For deployed environments (like Firebase App Hosting): This variable MUST be set in your hosting provider's environment variable configuration. In Firebase App Hosting, this is typically managed via the apphosting.<ENVIRONMENT_NAME>.yaml file (e.g., apphosting.mailsageprod.yaml). Ensure this file is correctly configured and deployed.\n" +
+    "3. After setting/modifying environment variables (either in .env or apphosting.<env>.yaml), you MUST REBUILD AND REDEPLOY your application for the changes to take effect.\n" +
     "4. Double-check the variable name NEXT_PUBLIC_FIREBASE_API_KEY for typos in your configuration files.\n\n" +
     "Find your Firebase SDK setup and configuration details in: Firebase project settings -> General tab -> Your apps section.";
   console.error(errorMsg);
@@ -52,7 +51,7 @@ if (!appIdFromEnv || appIdFromEnv === placeholderAppId) warnings.push("NEXT_PUBL
 
 if (warnings.length > 0) {
   console.warn(
-    "WARNING: The following Firebase configuration values might be using default placeholder values or are missing from the environment: " + warnings.join(', ') + ".\n" +
+    "FIREBASE CONFIG WARNING: The following Firebase configuration values might be using default placeholder values or are missing from the environment: " + warnings.join(', ') + ".\n" +
     "This could lead to unexpected behavior if these services are used. \n\n" +
     "Effective Firebase Config (API Key shown partially for security):\n" +
     `  apiKey: ${firebaseConfig.apiKey ? firebaseConfig.apiKey.substring(0, 8) + "..." : "MISSING!"}\n` +
@@ -61,7 +60,7 @@ if (warnings.length > 0) {
     `  storageBucket: ${firebaseConfig.storageBucket} (from env: ${storageBucketFromEnv || 'MISSING'})\n` +
     `  messagingSenderId: ${firebaseConfig.messagingSenderId} (from env: ${messagingSenderIdFromEnv || 'MISSING'})\n` +
     `  appId: ${firebaseConfig.appId} (from env: ${appIdFromEnv || 'MISSING'})\n\n` +
-    "Ensure your apphosting.<env>.yaml (for deployed environments) or .env file (for local development) contains all correct NEXT_PUBLIC_ prefixed Firebase credentials from your Firebase project settings. " +
+    "Ensure your apphosting.<ENVIRONMENT_NAME>.yaml (for deployed environments) or .env file (for local development) contains all correct NEXT_PUBLIC_ prefixed Firebase credentials from your Firebase project settings. " +
     "If you've recently updated these, a rebuild/redeploy of the application is likely necessary."
   );
 }
