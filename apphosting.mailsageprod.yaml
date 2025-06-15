@@ -2,9 +2,8 @@
 # This file defines environment variables that will be available to your application
 # when deployed to this App Hosting environment.
 
-# Environment variables are specified under the 'env' key.
 env:
-  # Genkit API Key (replace with your actual key from Google AI Studio)
+  # Genkit API Key (from Google AI Studio)
   GOOGLE_API_KEY: AIzaSyByOmoOGcR-gAr9pVhvuIOv1bZMHI6p27I
 
   # Firebase SDK Configuration
@@ -15,10 +14,3 @@ env:
   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "mailsage-erevl.firebasestorage.app"
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "1008775484489"
   NEXT_PUBLIC_FIREBASE_APP_ID: "1:1008775484489:web:c75130ebad77581c5fdb98"
-
-# You can also include other configurations like runConfig, etc.,
-# specific to this environment if needed. If not specified here,
-# they will default to the values in the main apphosting.yaml.
-# Example:
-# runConfig:
-#   maxInstances: 5
