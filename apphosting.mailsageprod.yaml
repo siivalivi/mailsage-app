@@ -4,7 +4,7 @@
 
 env:
   # Genkit API Key (from Google AI Studio)
-  GOOGLE_API_KEY: AIzaSyByOmoOGcR-gAr9pVhvuIOv1bZMHI6p27I
+  GOOGLE_API_KEY: "AIzaSyByOmoOGcR-gAr9pVhvuIOv1bZMHI6p27I"
 
   # Firebase SDK Configuration
   # These are used by your Next.js application to initialize Firebase services.
