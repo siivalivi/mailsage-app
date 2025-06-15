@@ -4,11 +4,12 @@
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Email } from '@/types'; // Using the more detailed Email type
+import type { Email } from '@/types';
 import { ArrowRight, CalendarDays, UserCircle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface EmailListItemProps {
-  email: Email; // Expecting the enriched Email type which includes id and timestamp
+  email: Email;
 }
 
 function formatDate(timestamp: number): string {
@@ -22,12 +23,37 @@ function formatDate(timestamp: number): string {
 }
 
 export default function EmailListItem({ email }: EmailListItemProps) {
+  const router = useRouter();
+
+  const handleItemClick = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+    // Prevent default if the click is on something that already navigates,
+    // though Link component handles its own navigation.
+    // e.preventDefault(); 
+    
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`email-${email.id}`, JSON.stringify(email));
+      } catch (error) {
+        console.error("Error saving email to localStorage:", error);
+        // Potentially show a toast to the user if localStorage is full or disabled
+      }
+    }
+    router.push(`/dashboard/email/${email.id}`);
+  };
+
   return (
-    <Link
-      href={`/dashboard/email/${email.id}`}
-      className="block group outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-lg h-full"
+    // Using a div with onClick for localStorage interaction before navigation.
+    // The Link component is removed, and navigation is handled by router.push.
+    // This gives more control over the click event.
+    // Alternatively, wrap Link with div and stopPropagation if needed, but this is simpler.
+    <div
+      onClick={handleItemClick}
+      className="block group outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-lg h-full cursor-pointer"
+      role="link" // ARIA role for accessibility
+      tabIndex={0} // Make it focusable
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleItemClick(e as any); }} // Keyboard accessibility
     >
-      <Card className="hover:shadow-lg transition-shadow duration-200 ease-in-out cursor-pointer group-hover:border-primary h-full">
+      <Card className="hover:shadow-lg transition-shadow duration-200 ease-in-out group-hover:border-primary h-full">
         <CardHeader>
           <div className="flex justify-between items-start">
             <CardTitle className="text-xl mb-1 group-hover:text-primary transition-colors">{email.subject}</CardTitle>
@@ -46,13 +72,13 @@ export default function EmailListItem({ email }: EmailListItemProps) {
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground line-clamp-2">
-            {email.summary || email.body.substring(0,150) + "..."}
+            {email.summary || (email.body ? email.body.substring(0, 150) + "..." : "No preview available.")}
           </p>
           <div className="flex justify-end items-center mt-4 text-sm text-primary opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             View Email <ArrowRight className="w-4 h-4 ml-1" />
           </div>
         </CardContent>
       </Card>
-    </Link>
+    </div>
   );
 }

@@ -5,18 +5,19 @@ import QueryForm from '@/components/emails/QueryForm';
 import EmailList from '@/components/emails/EmailList';
 import { Email, QueriedEmail } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { MailQuestion } from 'lucide-react';
+import { MailQuestion, Info, Loader2 } from 'lucide-react';
+import { summarizeQueriedEmails, SummarizeQueriedEmailsInput } from '@/ai/flows/summarize-queried-emails-flow';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-// Mock data - replace with actual data fetching or AI flow results
 const generateMockEmails = (queriedEmails: QueriedEmail[]): Email[] => {
   return queriedEmails.map((qEmail, index) => ({
-    id: `mock-${index + 1}-${Date.now()}`, // More unique ID
+    id: `mock-${index + 1}-${Date.now()}`,
     sender: qEmail.sender,
     subject: qEmail.subject,
     body: `This is the mock body for the email titled "${qEmail.subject}" from ${qEmail.sender}. It contains various details that could be summarized by our AI. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. This email also talks about an important meeting scheduled for next Tuesday and a follow-up required by end of day Friday. Action items include preparing the presentation slides and sending the agenda to all attendees.`,
     summary: qEmail.summary,
-    timestamp: Date.now() - Math.floor(Math.random() * 1000000000), // Random timestamp in the past
-    isRead: Math.random() > 0.5, // Randomly mark as read/unread
+    timestamp: Date.now() - Math.floor(Math.random() * 1000000000),
+    isRead: Math.random() > 0.5,
   }));
 };
 
@@ -31,20 +32,41 @@ const initialMockQueriedEmails: QueriedEmail[] = [
 export default function DashboardPage() {
   const { currentUser } = useAuth();
   const [emails, setEmails] = useState<Email[]>([]);
-  const [isLoading, setIsLoading] = useState(true); // Start true to show loading for initial mocks
+  const [isLoading, setIsLoading] = useState(true);
+  const [overallSummary, setOverallSummary] = useState<string | null>(null);
+  const [isOverallSummarizing, setIsOverallSummarizing] = useState(false);
 
-  // Load initial mock emails when component mounts
   useEffect(() => {
     setEmails(generateMockEmails(initialMockQueriedEmails));
     setIsLoading(false);
+    // Optionally, generate an overall summary for initial emails too
+    // handleOverallSummary(initialMockQueriedEmails); 
   }, []);
   
+  const handleOverallSummary = async (emailListForSummary: QueriedEmail[]) => {
+    if (emailListForSummary.length > 0) {
+      setIsOverallSummarizing(true);
+      setOverallSummary(null); // Clear previous summary
+      try {
+        const result = await summarizeQueriedEmails({ queriedEmails: emailListForSummary } as SummarizeQueriedEmailsInput);
+        setOverallSummary(result.overallSummary);
+      } catch (error) {
+        console.error('Error generating overall summary:', error);
+        setOverallSummary('Could not generate an overall summary at this time.');
+      } finally {
+        setIsOverallSummarizing(false);
+      }
+    } else {
+      setOverallSummary(null); // No emails, no summary
+    }
+  };
+
   const handleQuerySubmit = (queriedEmails: QueriedEmail[]) => {
     setEmails(generateMockEmails(queriedEmails));
+    handleOverallSummary(queriedEmails); // Generate overall summary for new query results
   };
 
   if (!currentUser) {
-    // This should be handled by AuthenticatedLayout, but as a safeguard
     return <p>Redirecting to login...</p>;
   }
 
@@ -58,6 +80,28 @@ export default function DashboardPage() {
       </div>
       
       <QueryForm onQuerySubmit={handleQuerySubmit} setIsLoading={setIsLoading} />
+
+      {(isOverallSummarizing || overallSummary) && (
+        <Card className="bg-secondary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center text-xl">
+              <Info className="w-5 h-5 mr-2 text-accent" />
+              Overall Summary of Queried Emails
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isOverallSummarizing && (
+              <div className="flex items-center text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                <span>Generating overall summary...</span>
+              </div>
+            )}
+            {overallSummary && !isOverallSummarizing && (
+              <p className="text-foreground whitespace-pre-wrap">{overallSummary}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
       
       <div className="mt-6">
         <div className="flex items-center mb-4">

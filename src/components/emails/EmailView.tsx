@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Email } from '@/types';
+import type { Email } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { summarizeEmail, SummarizeEmailInput } from '@/ai/flows/summarize-email';
-import { Loader2, FileText, MessageSquareText, CalendarDays, UserCircle } from 'lucide-react';
+import { Loader2, FileText, MessageSquareText, CalendarDays, UserCircle, Sparkles } from 'lucide-react'; // Replaced ZapIcon with Sparkles
 import { useToast } from '@/hooks/use-toast';
 
 interface EmailViewProps {
@@ -28,11 +27,8 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
   const [isSummarizing, setIsSummarizing] = useState(false);
   const { toast } = useToast();
 
-  // Effect to update local email state if initialEmail prop changes (e.g. navigating between emails)
   useEffect(() => {
     setEmail(initialEmail);
-    // If the new email doesn't have a summary but the old one did, clear it or handle as needed
-    // For now, just resetting to the new initialEmail is fine
   }, [initialEmail]);
 
   const handleSummarize = async () => {
@@ -112,25 +108,25 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
                 {isSummarizing ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : (
-                  <ZapIcon className="h-4 w-4 mr-2" />
+                  <Sparkles className="h-4 w-4 mr-2" /> // Using Sparkles icon
                 )}
-                {email.summary ? 'Re-Summarize' : 'Summarize'}
+                {email.summary && email.summary !== "No summary available." ? 'Re-Summarize' : 'Summarize'}
               </Button>
             </div>
           </CardHeader>
           <CardContent>
-            {isSummarizing && !email.summary && (
+            {isSummarizing && !email.summary && ( // Show loading only if no summary exists yet
               <div className="flex items-center justify-center h-20">
                 <Loader2 className="h-8 w-8 animate-spin text-accent" />
                 <p className="ml-2 text-muted-foreground">Generating summary...</p>
               </div>
             )}
-            {!isSummarizing && !email.summary && (
+            {!isSummarizing && (!email.summary || email.summary === "No summary available.") && (
               <p className="text-muted-foreground italic">
                 No summary available. Click 'Summarize' to generate one.
               </p>
             )}
-            {email.summary && (
+            {email.summary && email.summary !== "No summary available." && (
               <div className="prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap break-words text-foreground">
                 {email.summary}
               </div>
@@ -142,22 +138,4 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
   );
 }
 
-// Placeholder ZapIcon as Lucide doesn't have a direct equivalent
-function ZapIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-    </svg>
-  )
-}
+// Removed ZapIcon as it's replaced by lucide-react's Sparkles
