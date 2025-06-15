@@ -22,7 +22,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
       const token = sessionStorage.getItem('googleAccessToken');
-      console.log('[AuthContext] useState initializer: Token from sessionStorage:', token ? token.substring(0,10)+'...' : 'null');
+      console.log('[AuthContext] Initializer: Token from sessionStorage:', token ? token.substring(0,10)+'...' : 'null');
       return token;
     }
     return null;
@@ -33,70 +33,79 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
 
   useEffect(() => {
-    console.log('[AuthContext] Root effect monitoring user/token. Current user:', currentUser?.uid, 'Token state:', googleAccessToken ? googleAccessToken.substring(0,10)+'...' : 'null');
+    console.log('[AuthContext] Root effect (onAuthStateChanged subscription setup). Initializing loading to true.');
+    setLoading(true); // Ensure loading is true when this effect runs initially
     const unsubscribe = auth.onAuthStateChanged(user => {
-      console.log('[AuthContext] onAuthStateChanged: Firebase user event. User:', user?.uid);
+      console.log('[AuthContext] onAuthStateChanged: Firebase user event. User UID:', user?.uid);
       setCurrentUser(user);
       if (user) {
         const tokenFromStorage = typeof window !== 'undefined' ? sessionStorage.getItem('googleAccessToken') : null;
-        console.log('[AuthContext] onAuthStateChanged: User is PRESENT. Token from storage:', tokenFromStorage ? tokenFromStorage.substring(0,10)+'...' : 'null', 'Token in state:', googleAccessToken ? googleAccessToken.substring(0,10)+'...' : 'null');
-        
+        console.log(`[AuthContext] onAuthStateChanged: User IS PRESENT. Token from storage: ${tokenFromStorage ? tokenFromStorage.substring(0,10)+'...' : 'null'}. Current state token: ${googleAccessToken ? googleAccessToken.substring(0,10)+'...' : 'null'}`);
         if (tokenFromStorage && googleAccessToken !== tokenFromStorage) {
-            console.log('[AuthContext] onAuthStateChanged: User PRESENT. Syncing token from sessionStorage to state.');
+            console.log('[AuthContext] onAuthStateChanged: Syncing token from sessionStorage to state.');
             setGoogleAccessToken(tokenFromStorage);
         } else if (!tokenFromStorage && googleAccessToken) {
-             console.warn('[AuthContext] onAuthStateChanged: User PRESENT. Token in state but NOT in sessionStorage. This might be an issue or a race condition during sign-out/sign-in.');
-             // We might clear state token here if sessionStorage is the absolute source of truth after sign-in
-             // setGoogleAccessToken(null); 
+             console.warn('[AuthContext] onAuthStateChanged: Token in state but NOT in sessionStorage. This could happen during sign-out or if storage was cleared externally.');
+             // Consider if state token should be cleared here if sessionStorage is the ultimate source of truth after initial sign-in.
+             // For now, we let existing state token persist until explicitly cleared by sign-out.
         } else if (tokenFromStorage && !googleAccessToken) {
             console.log('[AuthContext] onAuthStateChanged: User PRESENT. Token in sessionStorage but NOT in state (e.g. after page load). Syncing.');
             setGoogleAccessToken(tokenFromStorage);
         }
       } else {
-        // User is signed out
-        console.log('[AuthContext] onAuthStateChanged: User is NULL (signed out). Clearing token state and sessionStorage.');
+        console.log('[AuthContext] onAuthStateChanged: User IS NULL (signed out). Clearing token state and sessionStorage.');
         setGoogleAccessToken(null);
         if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken');
       }
+      console.log('[AuthContext] onAuthStateChanged: Setting loading to false.');
       setLoading(false);
     });
-    return unsubscribe; // Cleanup subscription on unmount
-  }, []); // Empty dependency array: runs once on mount, cleans up on unmount. State updates within will trigger re-renders.
+    return () => {
+      console.log('[AuthContext] Root effect cleanup: Unsubscribing from onAuthStateChanged.');
+      unsubscribe();
+    };
+  }, []); // This effect should run once on mount to set up the listener and clean up on unmount.
 
   const signInWithGoogle = async () => {
-    setLoading(true); // Set loading true at the beginning of the sign-in attempt
+    console.log('[AuthContext] signInWithGoogle: Initiating sign-in. Setting loading to true.');
+    setLoading(true);
     try {
-      console.log('[AuthContext] signInWithGoogle: Attempting sign-in.');
       const result = await signInWithPopup(auth, googleProvider);
-      console.log('[AuthContext] signInWithGoogle: popup result:', result);
+      console.log('[AuthContext] signInWithGoogle: popup result object:', result); // Log the entire result object
+      
       const credential = result.credential as OAuthCredential | null;
-      console.log('[AuthContext] signInWithGoogle: credential object:', credential);
+      console.log('[AuthContext] signInWithGoogle: credential object from result:', credential); // Log the credential object
 
       if (credential && credential.accessToken) {
-        console.log('[AuthContext] signInWithGoogle: AccessToken OBTAINED:', credential.accessToken.substring(0, 20) + "...");
-        setGoogleAccessToken(credential.accessToken);
-        if (typeof window !== 'undefined') sessionStorage.setItem('googleAccessToken', credential.accessToken);
+        const token = credential.accessToken;
+        console.log('[AuthContext] signInWithGoogle: AccessToken OBTAINED:', token.substring(0, 20) + "...");
+        setGoogleAccessToken(token);
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('googleAccessToken', token);
+          console.log('[AuthContext] signInWithGoogle: Token stored in sessionStorage.');
+        }
+        // currentUser will be set by onAuthStateChanged, which will also set loading to false.
         toast({
-          title: "Signed In",
-          description: "Successfully signed in and obtained Gmail access. You can now query your Gmail.",
+          title: "Signed In & Gmail Access Granted",
+          description: "Successfully obtained permissions to access Gmail.",
         });
-        // currentUser will be set by onAuthStateChanged.
-        // setLoading(false) will also be handled by onAuthStateChanged.
-        // router.push('/dashboard') is handled by the navigation useEffect.
       } else {
-        console.warn('[AuthContext] signInWithGoogle: Google OAuth Credential or Access Token NOT FOUND after sign-in.');
+        // This block is hit if Firebase auth might have worked (result.user exists) but OAuth credential/token for Gmail scope failed
+        console.warn('[AuthContext] signInWithGoogle: Google OAuth Credential or Access Token NOT FOUND after sign-in. User object from result:', result.user);
         setGoogleAccessToken(null); 
         if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken');
         toast({
           variant: "destructive",
-          title: "Sign-In Permissions Issue",
-          description: "Could not retrieve necessary permissions for Gmail. Please ensure pop-ups are allowed and you grant access to Gmail when prompted.",
+          title: "Gmail Permission Issue",
+          description: "Could not retrieve Gmail access. Ensure pop-ups are allowed, you grant Gmail access when prompted, and the Gmail API is enabled in your Google Cloud Console project.",
         });
-        // If Firebase auth itself failed (result.user is null), onAuthStateChanged handles currentUser & setLoading.
-        // If Firebase auth succeeded but token failed, onAuthStateChanged handles currentUser & setLoading.
+        // If result.user is null, onAuthStateChanged will set currentUser to null.
+        // If result.user exists but token failed, onAuthStateChanged handles currentUser.
+        // Set loading to false here if it wasn't handled by onAuthStateChanged immediately.
+        if(!result.user) setLoading(false); 
       }
     } catch (error: any) {
-      console.error("[AuthContext] signInWithGoogle: Error during sign-in:", error);
+      console.error("[AuthContext] signInWithGoogle: Error during sign-in popup:", error);
       setGoogleAccessToken(null);
       if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken');
       toast({
@@ -105,22 +114,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description: error.message || "Could not sign in with Google. Please try again.",
         action: <Button variant="outline" size="sm" onClick={() => signInWithGoogle()}>Try Again</Button>,
       });
-      setLoading(false); // Explicitly set loading to false here as onAuthStateChanged might not fire or be delayed on certain errors.
+      setLoading(false); 
     }
   };
 
   const signOutUser = async () => {
+    console.log('[AuthContext] signOutUser: Initiating sign-out. Setting loading to true.');
     setLoading(true);
     try {
-      console.log('[AuthContext] signOutUser: Attempting sign-out.');
       await firebaseSignOut(auth);
-      // setGoogleAccessToken(null) & sessionStorage.removeItem handled by onAuthStateChanged
+      // setGoogleAccessToken(null), sessionStorage.removeItem, and setCurrentUser(null) are handled by onAuthStateChanged
+      // which also sets loading to false.
       toast({
         title: "Signed Out",
         description: "You have been successfully signed out.",
       });
-      // router.push('/') is handled by the navigation useEffect.
-      // setLoading(false) is handled by onAuthStateChanged.
     } catch (error: any) {
       console.error("[AuthContext] signOutUser: Error during sign-out:", error);
       toast({
@@ -133,33 +141,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const getGoogleAccessToken = (): string | null => {
+    // Primary source of truth is the state, which should be synced with sessionStorage.
     console.log('[AuthContext] getGoogleAccessToken called. Current state token:', googleAccessToken ? googleAccessToken.substring(0,10)+'...' : 'null');
-    if (googleAccessToken) {
-        return googleAccessToken;
-    }
-    // Fallback check to sessionStorage if state is unexpectedly null.
-    // This is more of a safeguard; ideally, state should be consistently synced.
-    if (typeof window !== 'undefined') {
-        const tokenFromStorage = sessionStorage.getItem('googleAccessToken');
-        if (tokenFromStorage) {
-            console.warn('[AuthContext] getGoogleAccessToken: Returning token directly from sessionStorage as state was null. State may be out of sync.');
-            // To avoid side-effects in a getter, we don't set state here.
-            // The useEffect for onAuthStateChanged should handle state synchronization.
-            return tokenFromStorage;
-        }
-    }
-    console.log('[AuthContext] getGoogleAccessToken: Returning null because no token in state or sessionStorage fallback.');
-    return null;
+    return googleAccessToken;
   };
   
+  // Effect for handling navigation based on auth state
   useEffect(() => {
+    console.log(`[AuthContext] Navigation effect: loading=${loading}, currentUserUID=${currentUser?.uid}, pathname=${pathname}`);
     if (!loading) {
       const isAuthPage = pathname === '/';
       if (currentUser && isAuthPage) {
         console.log('[AuthContext] Navigation: User logged in and on auth page, redirecting to /dashboard');
         router.push('/dashboard');
       } else if (!currentUser && !isAuthPage && pathname.startsWith('/dashboard')) {
-        console.log('[AuthContext] Navigation: User not logged in and on dashboard page, redirecting to /');
+        console.log('[AuthContext] Navigation: User not logged in and on protected page, redirecting to /');
         router.push('/');
       }
     }
@@ -179,3 +175,4 @@ export const useAuth = () => {
   }
   return context;
 };
+
