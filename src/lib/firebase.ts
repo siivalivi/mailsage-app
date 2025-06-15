@@ -70,8 +70,13 @@ if (warnings.length > 0) {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
+
 // Add scope to request access to Gmail API
 googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+// Force consent screen every time for debugging OAuth token retrieval
+googleProvider.setCustomParameters({
+  prompt: 'consent'
+});
 
 
 export { auth, googleProvider, signInWithPopup, signOut, type User, type OAuthCredential };
