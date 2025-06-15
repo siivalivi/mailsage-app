@@ -14,16 +14,22 @@ const placeholderApiKey = "AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXX"; // Default placeh
 if (!apiKeyFromEnv || apiKeyFromEnv === placeholderApiKey) {
   console.warn(
     "WARNING: Firebase API Key is missing or using a placeholder value. " +
-    "Please create a .env file in the project root and add your Firebase project's configuration. " +
-    "For example:\n\n" +
+    "Please create a .env file in the project root and add your Firebase project's configuration. \n\n" +
+    "To find these values:\n" +
+    "1. Go to your Firebase project: https://console.firebase.google.com/\n" +
+    "2. Select your project.\n" +
+    "3. Click on 'Project settings' (the gear icon ⚙️) in the sidebar.\n" +
+    "4. Under the 'General' tab, scroll down to the 'Your apps' section.\n" +
+    "5. If you have a web app, select it. If not, create one by clicking 'Add app' and choosing the web platform (</>).\n" +
+    "6. You'll find the 'SDK setup and configuration' details (apiKey, authDomain, projectId, etc.) there.\n\n" +
+    "Copy these values into a .env file in your project root like this:\n\n" +
     "NEXT_PUBLIC_FIREBASE_API_KEY=your_actual_api_key\n" +
     "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_actual_auth_domain\n" +
     "NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_actual_project_id\n" +
     "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_actual_storage_bucket\n" +
     "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_actual_sender_id\n" +
     "NEXT_PUBLIC_FIREBASE_APP_ID=your_actual_app_id\n\n" +
-    "The application may not function correctly until these are set. " +
-    "You can find these values in your Firebase project settings (Project settings > General > Your apps > Web app)."
+    "The application may not function correctly until these are set. "
   );
 }
 
@@ -45,3 +51,4 @@ const googleProvider = new GoogleAuthProvider();
 // googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
 
 export { auth, googleProvider, signInWithPopup, signOut, type User };
+
