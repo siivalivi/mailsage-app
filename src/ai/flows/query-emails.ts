@@ -43,9 +43,9 @@ For each email, provide:
 - Sender
 - Subject
 - A concise, structured summary of the email content. This summary should:
-    - Extract and highlight key information such as names of people or organizations, monetary amounts, specific dates or deadlines, and locations.
+    - Extract and highlight key information such as names of people or organizations, monetary amounts (e.g., total cost, specific line items), specific dates or deadlines, and locations.
     - Clearly list any explicit action items or questions directed at the recipient.
-    - If the email appears to be a bill, receipt, or financial statement, make sure to summarize the total amount, key items or services, and payment due dates if mentioned.
+    - If the email appears to be a bill, receipt, or financial statement, make sure to summarize the total amount, key items or services, and payment due dates if mentioned. If available, include details like the last four digits of a payment method if it's part of a financial confirmation.
     - Present information in an easy-to-scan format. Use bullet points for lists, action items, or breakdowns where appropriate.
     - Aim for a balance between brevity and completeness of critical information. The goal is to give the user a quick but thorough understanding of the email's essence.
 
@@ -61,6 +61,9 @@ const queryEmailsFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
+    // For mock purposes, if no emails are found, we can return a predefined empty list or a message.
+    // Here, we assume the AI will always return an object matching the schema, even if emailList is empty.
     return output!;
   }
 );
+
