@@ -19,30 +19,40 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
+  // Initialize googleAccessToken state directly from sessionStorage on first render
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('googleAccessToken');
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
 
   useEffect(() => {
-    const storedToken = sessionStorage.getItem('googleAccessToken');
-    if (storedToken) {
-        setGoogleAccessToken(storedToken);
-    }
-
     const unsubscribe = auth.onAuthStateChanged(user => {
       setCurrentUser(user);
-      if (!user) {
+      if (user) {
+        // User is signed in.
+        // Attempt to load token from session storage if not already in state.
+        // This helps if the AuthProvider re-mounts or state was lost but sessionStorage has the token.
+        const tokenFromStorage = sessionStorage.getItem('googleAccessToken');
+        if (tokenFromStorage && googleAccessToken !== tokenFromStorage) { 
+            setGoogleAccessToken(tokenFromStorage);
+        }
+        // If tokenFromStorage is null here, it means it wasn't set during signIn or was cleared.
+        // The user might be authenticated with Firebase but without a Gmail access token.
+      } else {
+        // User is signed out
         setGoogleAccessToken(null);
         sessionStorage.removeItem('googleAccessToken');
       }
-      // If user exists, token should have been set at sign-in or from session storage already.
-      // A robust app would verify token validity here and refresh if necessary.
       setLoading(false);
     });
-    return unsubscribe;
-  }, []);
+    return unsubscribe; // Cleanup subscription on unmount
+  }, [googleAccessToken]); // Add googleAccessToken to dependency array to re-evaluate if it changes externally
 
   const signInWithGoogle = async () => {
     setLoading(true);
@@ -53,24 +63,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (credential && credential.accessToken) {
         setGoogleAccessToken(credential.accessToken);
         sessionStorage.setItem('googleAccessToken', credential.accessToken);
+        // currentUser will be set by onAuthStateChanged
+        toast({
+          title: "Signed In",
+          description: "Successfully signed in with Google and obtained Gmail access. You can now query your Gmail.",
+        });
+        router.push('/dashboard'); 
       } else {
-        console.warn('Google OAuth Credential or Access Token not found after sign-in.');
+        console.warn('Google OAuth Credential or Access Token not found after sign-in. Gmail features will be unavailable.');
+        setGoogleAccessToken(null); 
+        sessionStorage.removeItem('googleAccessToken');
         toast({
           variant: "destructive",
           title: "Sign-In Permissions Issue",
-          description: "Could not retrieve necessary permissions for Gmail. Please ensure pop-ups are allowed and try again.",
+          description: "Could not retrieve necessary permissions for Gmail. Please ensure pop-ups are allowed and you grant access to Gmail when prompted. Gmail features will be unavailable.",
         });
-        // Do not clear currentUser here, onAuthStateChanged will handle the user state.
-        // setLoading(false) will be called by onAuthStateChanged
-        return; // Early exit if token is not available.
+        // User might be signed into Firebase, but without Gmail token.
+        // onAuthStateChanged will set currentUser and setLoading(false).
+        // If user is set, they might be redirected to dashboard but Gmail queries will fail.
+        if (result.user) router.push('/dashboard'); // Still go to dashboard if Firebase user exists
+        else setLoading(false); // If no Firebase user, ensure loading is false
+        return; 
       }
-      
-      // User will be set by onAuthStateChanged, which also sets loading to false.
-      toast({
-        title: "Signed In",
-        description: "Successfully signed in with Google. You can now query your Gmail.",
-      });
-      router.push('/dashboard'); // Redirect after successful token retrieval and toast.
     } catch (error: any) {
       console.error("Google Sign-In Error:", error);
       setGoogleAccessToken(null);
@@ -81,16 +95,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description: error.message || "Could not sign in with Google. Please try again.",
         action: <Button variant="outline" size="sm" onClick={() => signInWithGoogle()}>Try Again</Button>,
       });
-      setLoading(false); // Explicitly set loading false on error path if onAuthStateChanged doesn't run
+      setLoading(false); 
     }
-    // setLoading will be managed by onAuthStateChanged or error path.
   };
 
   const signOutUser = async () => {
     setLoading(true);
     try {
       await firebaseSignOut(auth);
-      // setCurrentUser(null) and token clearing is handled by onAuthStateChanged listener.
+      // setGoogleAccessToken(null) & sessionStorage.removeItem handled by onAuthStateChanged
       toast({
         title: "Signed Out",
         description: "You have been successfully signed out.",
@@ -103,18 +116,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         title: "Sign-Out Failed",
         description: error.message || "Could not sign out. Please try again.",
       });
-    } finally {
-      // setLoading(false) will be handled by onAuthStateChanged if successful,
-      // or here if there was an error during the signOut call itself.
-      // However, onAuthStateChanged should always fire, making setLoading(false) there more reliable.
-       if (auth.currentUser === null) setLoading(false); // only if user is confirmed signed out
+      setLoading(false); // Ensure loading is false on sign-out error
     }
+    // setLoading(false) primarily handled by onAuthStateChanged for success
   };
 
   const getGoogleAccessToken = (): string | null => {
-    // A more robust implementation would check token expiry and initiate a refresh flow.
-    // For this prototype, we directly return the stored token.
-    return googleAccessToken || sessionStorage.getItem('googleAccessToken');
+    // Prioritize state, then session storage. State should be synced from session storage.
+    if (googleAccessToken) return googleAccessToken;
+    if (typeof window !== 'undefined') {
+        return sessionStorage.getItem('googleAccessToken');
+    }
+    return null;
   };
   
   useEffect(() => {
@@ -142,3 +155,4 @@ export const useAuth = () => {
   }
   return context;
 };
+
