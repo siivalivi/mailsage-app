@@ -36,23 +36,44 @@ const QueryEmailsOutputSchema = z.object({
 export type QueryEmailsOutput = z.infer<typeof QueryEmailsOutputSchema>;
 
 export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsOutput> {
-  // Entry log for the exported function
+  // This is the first log in the exported function.
   console.log(`[queryEmailsFlow EXPORTED_FUNCTION_ENTRY] Received input. User Query: "${input.query}", Access Token (first 10 chars): ${input.accessToken ? input.accessToken.substring(0,10) + '...' : 'MISSING'}`);
+  
+  // ---- TEMPORARY DIAGNOSTIC ----
+  // If this log appears in Cloud Logging, and client gets this hardcoded result,
+  // then the function is running, but previous logs might not have flushed or been captured.
+  console.log('[queryEmailsFlow EXPORTED_FUNCTION_ENTRY] Attempting to return hardcoded result for diagnostics.');
+  return {
+    emailList: [
+      {
+        id: 'diagnostic-test-id-1',
+        sender: 'Diagnostic Sender',
+        subject: 'Diagnostic Subject - Hardcoded Email',
+        snippet: 'This is a hardcoded snippet from the server action for diagnostic purposes.',
+        timestamp: Date.now(),
+        summary: 'This is a hardcoded AI summary from the server action for diagnostics.',
+      }
+    ]
+  };
+  // ---- END TEMPORARY DIAGNOSTIC ----
+
+  /*
+  // Original logic temporarily commented out:
+  console.log(`[queryEmailsFlow GENKIT_FLOW_RUN] Attempting to call queryEmailsFlow with input. User Query: "${input.query}"`);
   try {
     const result = await queryEmailsFlow(input);
-    console.log(`[queryEmailsFlow EXPORTED_FUNCTION_EXIT] Successfully returning ${result.emailList.length} emails.`);
+    console.log(`[queryEmailsFlow EXPORTED_FUNCTION_EXIT] Successfully returning ${result.emailList.length} emails from Genkit flow.`);
     return result;
   } catch (error) {
-    console.error(`[queryEmailsFlow EXPORTED_FUNCTION_ERROR] Error during flow execution:`, error);
-    // Re-throw the error to be caught by the client, or handle it as appropriate
-    // For now, return an empty list on error to prevent client from breaking,
-    // but the error should be logged and investigated.
-    // A more robust solution might involve returning an error object.
+    console.error(`[queryEmailsFlow EXPORTED_FUNCTION_ERROR] Error during queryEmailsFlow execution:`, error);
     if (error instanceof Error) {
+        // It's often better to throw a new error or a more structured error object
+        // to the client rather than just the message, but for now:
         throw new Error(`Error in queryEmails flow: ${error.message}`);
     }
     throw new Error('An unknown error occurred in the queryEmails flow.');
   }
+  */
 }
 
 const prompt = ai.definePrompt({
@@ -147,4 +168,3 @@ const queryEmailsFlow = ai.defineFlow(
     return output;
   }
 );
-
