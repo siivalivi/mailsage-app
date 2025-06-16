@@ -70,17 +70,16 @@ export async function fetchGmailMessages(
     console.error('[gmailService] fetchGmailMessages: Access token is required.');
     throw new Error('Access token is required to fetch Gmail messages.');
   }
-  console.log(`[gmailService] fetchGmailMessages: Called with queryString="${queryString}", maxResults=${maxResults}`);
+  console.log(`[gmailService] fetchGmailMessages: Called with queryString="${queryString}", maxResults=${maxResults}, accessToken (first 10): ${accessToken ? accessToken.substring(0,10) + '...' : 'MISSING'}`);
 
   let apiUrl = `https://www.googleapis.com/gmail/v1/users/me/messages?maxResults=${maxResults}`;
   if (queryString && queryString.trim() !== "") {
     apiUrl += `&q=${encodeURIComponent(queryString.trim())}`;
-    console.log(`[gmailService] fetchGmailMessages: Query string provided: "${queryString.trim()}"`);
+    console.log(`[gmailService] fetchGmailMessages: User query string provided: "${queryString.trim()}"`);
   } else {
-    console.log('[gmailService] fetchGmailMessages: No query string provided, fetching recent messages.');
-    // Default Gmail API behavior is to list recent messages if 'q' is omitted.
+    console.log('[gmailService] fetchGmailMessages: No user query string provided, fetching recent messages.');
   }
-  console.log(`[gmailService] fetchGmailMessages: Constructed API URL: ${apiUrl}`);
+  console.log(`[gmailService] fetchGmailMessages: Constructed Gmail API URL: ${apiUrl}`);
 
   try {
     const listResponse = await fetch(apiUrl, {
@@ -102,15 +101,17 @@ export async function fetchGmailMessages(
     console.log(`[gmailService] fetchGmailMessages: Gmail API list call found ${numMessagesFound} message(s) initially.`);
     
     if (!listResult.messages || listResult.messages.length === 0) {
-      console.log('[gmailService] fetchGmailMessages: No messages returned by Gmail API list call.');
+      console.log('[gmailService] fetchGmailMessages: No messages returned by Gmail API list call for the query.');
       return [];
     }
 
     const fetchedEmails: FetchedEmailData[] = [];
+    console.log('[gmailService] fetchGmailMessages: Attempting to fetch details for each message ID...');
 
     for (const messageInfo of listResult.messages.slice(0, maxResults)) {
       const messageId = messageInfo.id;
       // Requesting metadata format gives us headers and snippet directly.
+      // Also explicitly requesting Date, From, Subject headers.
       const messageUrl = `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`;
       
       const messageResponse = await fetch(messageUrl, {
@@ -124,7 +125,7 @@ export async function fetchGmailMessages(
       if (!messageResponse.ok) {
         const errorData = await messageResponse.json().catch(() => ({ message: messageResponse.statusText }));
         console.warn(`[gmailService] fetchGmailMessages: Failed to fetch details for message ID ${messageId} - Status: ${messageResponse.status}, Response:`, errorData);
-        continue; 
+        continue; // Skip this email and try the next
       }
 
       const messageData: GmailMessage = await messageResponse.json();
@@ -137,7 +138,7 @@ export async function fetchGmailMessages(
         timestamp: parseInt(messageData.internalDate, 10),
       });
     }
-    console.log(`[gmailService] fetchGmailMessages: Successfully fetched details for ${fetchedEmails.length} email(s). Returning:`, fetchedEmails.map(e => ({id: e.id, subject: e.subject})));
+    console.log(`[gmailService] fetchGmailMessages: Successfully fetched details for ${fetchedEmails.length} email(s). Returning (first 3 subjects if any):`, fetchedEmails.slice(0,3).map(e => ({id: e.id, subject: e.subject, sender: e.sender})));
     return fetchedEmails;
   } catch (error) {
     console.error('[gmailService] fetchGmailMessages: Error during processing:', error);

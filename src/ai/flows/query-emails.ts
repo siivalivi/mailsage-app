@@ -101,16 +101,16 @@ const queryEmailsFlow = ai.defineFlow(
 
     // 1. Fetch real emails using the gmailService.
     // The user's query string is passed to Gmail's 'q' parameter for initial filtering.
-    console.log('[queryEmailsFlow] Calling fetchGmailMessages...');
+    console.log('[queryEmailsFlow] Calling fetchGmailMessages with user query:', input.query);
     const actualEmailsData: FetchedEmailData[] = await fetchGmailMessages(input.accessToken, input.query, 20);
     console.log(`[queryEmailsFlow] fetchGmailMessages returned ${actualEmailsData.length} email(s).`);
     if (actualEmailsData.length > 0) {
-        console.log('[queryEmailsFlow] Data from fetchGmailMessages (first 3 subjects):', actualEmailsData.slice(0,3).map(e => e.subject));
+        console.log('[queryEmailsFlow] Data from fetchGmailMessages (first 3 subjects if any):', actualEmailsData.slice(0,3).map(e => ({id: e.id, subject: e.subject, snippet: e.snippet?.substring(0,50) + '...'})));
     }
 
 
     if (actualEmailsData.length === 0) {
-      console.log('[queryEmailsFlow] No emails found by gmailService or error during fetch. Returning empty list.');
+      console.log('[queryEmailsFlow] No emails found by gmailService or error during fetch. Returning empty list to client.');
       return { emailList: [] }; 
     }
     
@@ -124,13 +124,13 @@ const queryEmailsFlow = ai.defineFlow(
     const { output } = await prompt(promptInput);
 
     if (!output) {
-        console.error("[queryEmailsFlow] AI prompt did not return an output. Returning empty list.");
+        console.error("[queryEmailsFlow] AI prompt did not return an output. Returning empty list to client.");
         return { emailList: [] }; 
     }
     
     console.log(`[queryEmailsFlow] AI prompt returned ${output.emailList.length} email(s) after processing.`);
     if (output.emailList.length > 0) {
-        console.log('[queryEmailsFlow] AI output (first 3 subjects from AI):', output.emailList.slice(0,3).map(e => e.subject));
+        console.log('[queryEmailsFlow] AI output (first 3 subjects from AI if any):', output.emailList.slice(0,3).map(e => ({id: e.id, subject: e.subject, summary: e.summary?.substring(0,50) + '...'})));
     }
     
     // The AI's output is expected to match QueryEmailsOutputSchema directly.
