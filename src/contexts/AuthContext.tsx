@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { auth, googleProvider, signInWithPopup, signOut as firebaseSignOut, User, OAuthCredential, UserCredential } from '@/lib/firebase'; // Added UserCredential
+import { auth, googleProvider, signInWithPopup, signOut as firebaseSignOut, User, OAuthCredential, UserCredential } from '@/lib/firebase'; 
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 
@@ -41,9 +41,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } else if (tokenFromStorage && !googleAccessToken) {
             console.log('[AuthContext] onAuthStateChanged: User PRESENT. Token in sessionStorage but NOT in state. Syncing.');
             setGoogleAccessToken(tokenFromStorage);
-        } else if (!tokenFromStorage && googleAccessToken) {
-             console.warn('[AuthContext] onAuthStateChanged: User PRESENT. Token in state but NOT in sessionStorage. This should ideally not happen if sign-out clears both. Clearing state token.');
-             // setGoogleAccessToken(null); // Avoid clearing if a sign-in is in progress which hasn't updated sessionStorage yet
         }
       } else {
         console.log('[AuthContext] onAuthStateChanged: User IS NULL (signed out). Clearing token state and sessionStorage.');
@@ -62,7 +59,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && !googleAccessToken && !loading && auth.currentUser) { // Only run if not loading and user is known
+    if (typeof window !== 'undefined' && !googleAccessToken && !loading && auth.currentUser) { 
         const tokenFromStorage = sessionStorage.getItem('googleAccessToken');
         if (tokenFromStorage) {
             console.log('[AuthContext] Initial mount/hydration effect: Found token in sessionStorage. Setting state.');
@@ -70,7 +67,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, auth.currentUser]); // Re-check if loading status changes or user object becomes available
+  }, [loading, auth.currentUser]);
 
 
   const signInWithGoogle = async () => {
@@ -89,88 +86,75 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.error("[AuthContext] signInWithGoogle: Popup Error Code:", popupError.code);
       console.error("[AuthContext] signInWithGoogle: Popup Error Message:", popupError.message);
       
-      // Attempt to get customData if available, which might contain more specific OAuth errors
       if (popupError.customData) {
         console.error("[AuthContext] signInWithGoogle: Popup Error customData:", popupError.customData);
       }
-       if (popupError.code === 'auth/popup-closed-by-user') {
+       if (popupError.code === 'auth/popup-closed-by-user' || popupError.code === 'auth/cancelled-popup-request') {
         toast({
           variant: "destructive",
           title: "Sign-In Cancelled",
-          description: "The sign-in popup was closed before completion.",
-        });
-      } else if (popupError.code === 'auth/cancelled-popup-request') {
-         toast({
-          variant: "destructive",
-          title: "Sign-In Cancelled",
-          description: "Multiple sign-in popups were opened. The request was cancelled.",
+          description: "The Google Sign-In popup was closed or interrupted before completion.",
         });
       } else {
         toast({
           variant: "destructive",
           title: "Sign-In Popup Error",
-          description: `An error occurred during the sign-in process: ${popupError.message || 'Please try again.'}`,
+          description: `An error occurred during the Google Sign-In process: ${popupError.message || 'Please try again.'}`,
           action: <Button variant="outline" size="sm" onClick={() => signInWithGoogle()}>Try Again</Button>,
         });
       }
       setGoogleAccessToken(null);
       if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken');
-      setLoading(false); // Ensure loading is false if popup fails
-      return; // Stop execution if signInWithPopup itself fails
+      setLoading(false); 
+      return; 
     }
     
-    // Proceed if signInWithPopup resolved
     if (result && result.user) {
       console.log('[AuthContext] signInWithGoogle: User object from result:', result.user);
-      const credential = result.credential as OAuthCredential | null;
+      
+      // Log the raw credential object from the result
+      console.log('[AuthContext] signInWithGoogle: Raw result.credential object:', result.credential);
 
-      if (credential) {
-        console.log('[AuthContext] signInWithGoogle: OAuthCredential object from result IS PRESENT. Details:', credential);
-        if (credential.accessToken) {
-          const token = credential.accessToken;
-          console.log('[AuthContext] signInWithGoogle: OAuth AccessToken for Google Services OBTAINED:', token.substring(0, 20) + "...");
-          setGoogleAccessToken(token);
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('googleAccessToken', token);
-            console.log('[AuthContext] signInWithGoogle: OAuth Token stored in sessionStorage.');
-          }
-          toast({
-            title: "Signed In & Gmail Access Granted",
-            description: "Successfully obtained permissions to access Gmail.",
-          });
-        } else {
-          console.warn('[AuthContext] signInWithGoogle: OAuthCredential object PRESENT but its accessToken property is MISSING or falsy.');
-          setGoogleAccessToken(null);
-          if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken');
-          toast({
-            variant: "destructive",
-            title: "Gmail Permission Token Issue",
-            description: "Sign-in was successful, but could not retrieve the specific Gmail access token from the credential. Ensure you grant all permissions on the consent screen and check Google Cloud Console for Gmail API & OAuth config.",
-          });
+      const credential = result.credential as OAuthCredential | null; 
+
+      if (credential && credential.accessToken) {
+        const token = credential.accessToken;
+        console.log('[AuthContext] signInWithGoogle: OAuth AccessToken for Google Services OBTAINED:', token.substring(0, 20) + "...");
+        setGoogleAccessToken(token);
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('googleAccessToken', token);
+          console.log('[AuthContext] signInWithGoogle: OAuth Token stored in sessionStorage.');
         }
+        toast({
+          title: "Signed In & Gmail Access Granted",
+          description: "Successfully obtained permissions to access Gmail.",
+        });
       } else {
-        console.warn('[AuthContext] signInWithGoogle: Google OAuth Credential object from result is NULL. User object from result:', result.user);
+        console.warn('[AuthContext] signInWithGoogle: Google OAuthCredential (result.credential) is NULL or lacks an accessToken. User object from result:', result.user);
         setGoogleAccessToken(null);
         if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken');
         toast({
           variant: "destructive",
-          title: "Critical: OAuth Credential for Gmail Missing",
-          description: "Google Sign-In did not provide an OAuth Credential for Gmail access. This often means permissions were not fully granted on the consent screen, or there's an OAuth configuration issue in Google Cloud (e.g., app in 'Testing' mode but user isn't a 'Test user', or Gmail API not fully enabled/propagated, or incorrect OAuth client ID setup). Please verify your Google Cloud Project settings for the Gmail API and OAuth Consent Screen (including test user list if applicable).",
+          title: "Gmail Permission Denied or Unavailable",
+          description: "Sign-in was successful, but MailSage could not obtain specific permission to access your Gmail. This can happen if Gmail permissions were denied on the consent screen, or if there's an issue with your Google Cloud Project's OAuth configuration (e.g., app is in 'Testing' mode but your email isn't a 'Test user', or Gmail API not fully enabled/propagated). Please verify consent screen choices and Google Cloud settings, then try signing in again.",
+          action: <Button variant="outline" size="sm" onClick={() => {
+            signOutUser().then(() => signInWithGoogle()); // Try full sign-out then sign-in
+          }}>Re-Authenticate</Button>
         });
       }
     } else {
-      // This case should ideally be caught by the signInWithPopup catch block if result is null
-      console.error("[AuthContext] signInWithGoogle: signInWithPopup result or result.user is null, but no error was caught from signInWithPopup itself. This is unexpected.");
+      console.error("[AuthContext] signInWithGoogle: signInWithPopup result or result.user is null/undefined, but no error was caught from signInWithPopup. This is unexpected.");
        toast({
         variant: "destructive",
-        title: "Sign-In Failed",
-        description: "Could not complete sign-in with Google. The result was unexpected. Please try again.",
+        title: "Sign-In Failed Unexpectedly",
+        description: "Could not complete sign-in with Google due to an unexpected issue. Please try again.",
       });
     }
-    // setLoading(false) will be handled by onAuthStateChanged or if an error occurs earlier.
-    // If still no currentUser after this process (which would be unusual if result.user was present), ensure loading is false.
+    
+    // setLoading(false) will typically be handled by onAuthStateChanged.
+    // Ensure it's false if we fall through without a user or token somehow.
     if (!auth.currentUser && !loading) {
-        console.log("[AuthContext] signInWithGoogle: Setting loading false as no currentUser yet and not already loading.");
+        console.log("[AuthContext] signInWithGoogle: Setting loading false as no currentUser yet and not already loading (edge case).");
         setLoading(false);
     }
   };
@@ -184,8 +168,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         title: "Signed Out",
         description: "You have been successfully signed out.",
       });
-      // onAuthStateChanged will handle setCurrentUser(null), setGoogleAccessToken(null), and clearing sessionStorage.
-      // It will also set loading to false.
+      // onAuthStateChanged will handle setCurrentUser(null), setGoogleAccessToken(null), sessionStorage.removeItem, and setLoading(false).
     } catch (error: any) {
       console.error("[AuthContext] signOutUser: Error during sign-out:", error);
       toast({
@@ -193,12 +176,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         title: "Sign-Out Failed",
         description: error.message || "Could not sign out. Please try again.",
       });
-      setLoading(false); // Ensure loading is reset on error if onAuthStateChanged doesn't fire quickly
+      setLoading(false); 
     }
   };
 
   const getGoogleAccessToken = (): string | null => {
-    // Prioritize state, but check sessionStorage as a fallback (e.g. if state re-initializes after page load)
     if (googleAccessToken) {
       console.log('[AuthContext] getGoogleAccessToken: Returning token from state:', googleAccessToken.substring(0,10)+'...');
       return googleAccessToken;
@@ -206,8 +188,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (typeof window !== 'undefined') {
         const tokenFromStorage = sessionStorage.getItem('googleAccessToken');
         if (tokenFromStorage) {
-            console.log('[AuthContext] getGoogleAccessToken: Token not in state, but found in sessionStorage. Syncing and returning.');
-            setGoogleAccessToken(tokenFromStorage); // Sync to state
+            console.log('[AuthContext] getGoogleAccessToken: Token not in state, but found in sessionStorage. Syncing to state and returning.');
+            setGoogleAccessToken(tokenFromStorage); 
             return tokenFromStorage;
         }
     }
@@ -223,6 +205,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.log('[AuthContext] Navigation: User logged in and on auth page, redirecting to /dashboard');
         router.push('/dashboard');
       } else if (!currentUser && !isAuthPage && pathname.startsWith('/dashboard')) {
+        // Only redirect to '/' if not already on an auth-related page
+        // This prevents redirect loops if e.g. a settings page is introduced that doesn't require auth
+        // For now, assuming all non-'/' pages under /dashboard/* require auth
         console.log('[AuthContext] Navigation: User not logged in and on protected page, redirecting to /');
         router.push('/');
       }
@@ -243,4 +228,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
