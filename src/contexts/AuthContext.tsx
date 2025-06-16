@@ -95,6 +95,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           title: "Sign-In Cancelled",
           description: "The Google Sign-In popup was closed or interrupted before completion.",
         });
+      } else if (popupError.code === 'auth/popup-blocked') {
+        toast({
+          variant: "destructive",
+          title: "Popup Blocked",
+          description: "The Google Sign-In popup was blocked by your browser. Please allow popups for this site and try again.",
+        });
       } else {
         toast({
           variant: "destructive",
@@ -112,7 +118,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (result && result.user) {
       console.log('[AuthContext] signInWithGoogle: User object from result:', result.user);
       
-      // Log the raw credential object from the result
       console.log('[AuthContext] signInWithGoogle: Raw result.credential object:', result.credential);
 
       const credential = result.credential as OAuthCredential | null; 
@@ -130,20 +135,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           description: "Successfully obtained permissions to access Gmail.",
         });
       } else {
-        console.warn('[AuthContext] signInWithGoogle: Google OAuthCredential (result.credential) is NULL or lacks an accessToken. User object from result:', result.user);
+        console.warn('[AuthContext] signInWithGoogle: Google OAuth Credential object from result is NULL or lacks an accessToken. This is needed for Gmail. User object from result:', result.user);
         setGoogleAccessToken(null);
         if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken');
         toast({
           variant: "destructive",
-          title: "Gmail Permission Denied or Unavailable",
-          description: "Sign-in was successful, but MailSage could not obtain specific permission to access your Gmail. This can happen if Gmail permissions were denied on the consent screen, or if there's an issue with your Google Cloud Project's OAuth configuration (e.g., app is in 'Testing' mode but your email isn't a 'Test user', or Gmail API not fully enabled/propagated). Please verify consent screen choices and Google Cloud settings, then try signing in again.",
+          title: "Sign-In Permissions Issue (Gmail)",
+          description: "Sign-in to MailSage was successful, but permission to access Gmail was not obtained. This can happen if Gmail permissions were denied on the consent screen, if the Gmail API is not enabled in your Google Cloud Project, or if your app (in 'Testing' mode) doesn't list this account as a 'Test user'. Please check consent choices and Google Cloud settings (Gmail API, OAuth Consent Screen & Test Users).",
           action: <Button variant="outline" size="sm" onClick={() => {
-            signOutUser().then(() => signInWithGoogle()); // Try full sign-out then sign-in
+            signOutUser().then(() => signInWithGoogle());
           }}>Re-Authenticate</Button>
         });
       }
     } else {
-      console.error("[AuthContext] signInWithGoogle: signInWithPopup result or result.user is null/undefined, but no error was caught from signInWithPopup. This is unexpected.");
+      console.error("[AuthContext] signInWithGoogle: signInWithPopup result or result.user is null/undefined, but no error was caught. This is unexpected.");
        toast({
         variant: "destructive",
         title: "Sign-In Failed Unexpectedly",
@@ -151,8 +156,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
     }
     
-    // setLoading(false) will typically be handled by onAuthStateChanged.
-    // Ensure it's false if we fall through without a user or token somehow.
     if (!auth.currentUser && !loading) {
         console.log("[AuthContext] signInWithGoogle: Setting loading false as no currentUser yet and not already loading (edge case).");
         setLoading(false);
@@ -168,7 +171,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         title: "Signed Out",
         description: "You have been successfully signed out.",
       });
-      // onAuthStateChanged will handle setCurrentUser(null), setGoogleAccessToken(null), sessionStorage.removeItem, and setLoading(false).
     } catch (error: any) {
       console.error("[AuthContext] signOutUser: Error during sign-out:", error);
       toast({
@@ -205,9 +207,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.log('[AuthContext] Navigation: User logged in and on auth page, redirecting to /dashboard');
         router.push('/dashboard');
       } else if (!currentUser && !isAuthPage && pathname.startsWith('/dashboard')) {
-        // Only redirect to '/' if not already on an auth-related page
-        // This prevents redirect loops if e.g. a settings page is introduced that doesn't require auth
-        // For now, assuming all non-'/' pages under /dashboard/* require auth
         console.log('[AuthContext] Navigation: User not logged in and on protected page, redirecting to /');
         router.push('/');
       }
@@ -228,3 +227,4 @@ export const useAuth = () => {
   }
   return context;
 };
+
