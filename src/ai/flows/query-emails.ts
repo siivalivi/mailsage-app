@@ -36,8 +36,7 @@ const QueryEmailsOutputSchema = z.object({
 export type QueryEmailsOutput = z.infer<typeof QueryEmailsOutputSchema>;
 
 export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsOutput> {
-  // Using console.error for the very first log to see if it gets captured.
-  console.error(`[queryEmailsFlow EXPORTED_FUNCTION_ENTRY] Received input. User Query: "${input.query}", Access Token (first 10 chars): ${input.accessToken ? input.accessToken.substring(0,10) + '...' : 'MISSING'}`);
+  console.log(`[queryEmailsFlow EXPORTED_FUNCTION_ENTRY] Received input. User Query: "${input.query}", Access Token (first 10 chars): ${input.accessToken ? input.accessToken.substring(0,10) + '...' : 'MISSING'}`);
   
   if (!input.accessToken) {
     const errorMsg = `[queryEmailsFlow EXPORTED_FUNCTION_ERROR] Access token is missing in input. Query: "${input.query}". Cannot query emails.`;

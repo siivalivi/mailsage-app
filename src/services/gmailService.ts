@@ -70,8 +70,7 @@ export async function fetchGmailMessages(
     console.error('[gmailService] fetchGmailMessages ERROR: Access token is required.');
     throw new Error('Access token is required to fetch Gmail messages.');
   }
-  // Using console.error for the very first log to see if it gets captured.
-  console.error(`[gmailService] fetchGmailMessages: START. QueryString="${queryString}", MaxResults=${maxResults}, AccessToken (first 10): ${accessToken ? accessToken.substring(0,10) + '...' : 'MISSING'}`);
+  console.log(`[gmailService] fetchGmailMessages: START. QueryString="${queryString}", MaxResults=${maxResults}, AccessToken (first 10): ${accessToken ? accessToken.substring(0,10) + '...' : 'MISSING'}`);
 
   let apiUrl = `https://www.googleapis.com/gmail/v1/users/me/messages?maxResults=${maxResults}`;
   if (queryString && queryString.trim() !== "") {
@@ -166,8 +165,7 @@ export async function fetchGmailMessageBody(accessToken: string, messageId: stri
     throw new Error('Access token is required to fetch Gmail message body.');
   }
   const messageUrl = `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`;
-  // Using console.error for the very first log to see if it gets captured.
-  console.error(`[gmailService] fetchGmailMessageBody: Fetching full body for message ID ${messageId}`);
+  console.log(`[gmailService] fetchGmailMessageBody: Fetching full body for message ID ${messageId}`);
   
   try {
     const response = await fetch(messageUrl, {
@@ -206,11 +204,11 @@ export async function fetchGmailMessageBody(accessToken: string, messageId: stri
             }
             if (part.parts) {
               const nestedBody = findBodyInParts(part.parts);
-              if (nestedBody) { // Simplified logic: take the first one found in recursion
+              if (nestedBody) { 
                  if (part.mimeType === 'text/plain' && plainText === null) plainText = nestedBody;
                  else if (part.mimeType === 'text/html' && htmlText === null) htmlText = nestedBody;
-                 else if (plainText === null && htmlText === null) { // if neither type specific found, take any
-                    if(nestedBody) return nestedBody; // return immediately if any type of body found in recursion
+                 else if (plainText === null && htmlText === null) { 
+                    if(nestedBody) return nestedBody; 
                  }
               }
             }
@@ -235,4 +233,3 @@ export async function fetchGmailMessageBody(accessToken: string, messageId: stri
     throw new Error('An unknown error occurred while fetching email body.');
   }
 }
-
