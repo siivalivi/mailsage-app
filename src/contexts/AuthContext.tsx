@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { auth, googleProvider, signInWithPopup, signOut as firebaseSignOut, User, OAuthCredential, UserCredential } from '@/lib/firebase'; 
+import { auth, googleProvider, signInWithPopup, signOut as firebaseSignOut, User, OAuthCredential, UserCredential } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 
@@ -54,13 +54,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.log('[AuthContext] Root effect cleanup: Unsubscribing from onAuthStateChanged.');
       unsubscribe();
     };
-  }, []); // Removed googleAccessToken from dependencies as it caused potential loops with sessionStorage
+  }, []);
 
 
   useEffect(() => {
-    // This effect runs once on mount if not loading, or when loading status changes.
-    // It tries to initialize googleAccessToken from sessionStorage if a Firebase user is already active.
-    if (typeof window !== 'undefined' && !googleAccessToken && !loading && auth.currentUser) { 
+    if (typeof window !== 'undefined' && !googleAccessToken && !loading && auth.currentUser) {
         const tokenFromStorage = sessionStorage.getItem('googleAccessToken');
         if (tokenFromStorage) {
             console.log('[AuthContext] Initial mount/hydration effect: Found token in sessionStorage for active user. Setting state.');
@@ -70,7 +68,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, auth.currentUser]); // Runs when loading state changes or auth.currentUser object reference changes
+  }, [loading, auth.currentUser]);
 
 
   const signInWithGoogle = async () => {
@@ -84,6 +82,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       result = await signInWithPopup(auth, googleProvider);
       console.log('[AuthContext] signInWithGoogle: signInWithPopup promise resolved. Full result object:', result);
+      
+      // Log the internal _tokenResponse if it exists
+      if (result && (result as any)._tokenResponse) {
+        console.log('[AuthContext] signInWithGoogle: Internal _tokenResponse object from result:', (result as any)._tokenResponse);
+      } else if (result) {
+        console.log('[AuthContext] signInWithGoogle: Internal _tokenResponse object NOT FOUND in result.');
+      }
+
     } catch (popupError: any) {
       console.error("[AuthContext] signInWithGoogle: Error DIRECTLY from signInWithPopup:", popupError);
       console.error("[AuthContext] signInWithGoogle: Popup Error Code:", popupError.code);
@@ -92,7 +98,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (popupError.customData) {
         console.error("[AuthContext] signInWithGoogle: Popup Error customData:", popupError.customData);
       }
-       if (popupError.code === 'auth/popup-closed-by-user' || popupError.code === 'auth/cancelled-popup-request') {
+      if (popupError.code === 'auth/popup-closed-by-user' || popupError.code === 'auth/cancelled-popup-request') {
         toast({
           variant: "destructive",
           title: "Sign-In Cancelled",
@@ -114,22 +120,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       setGoogleAccessToken(null);
       if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken');
-      // Ensure loading is set to false if popup fails before user object is processed
-      if (!auth.currentUser) { // Check if a user object was ever established
+      if (!auth.currentUser) {
         console.log("[AuthContext] signInWithGoogle (popupError): No current user after popup error, setting loading false.");
-        setLoading(false); 
+        setLoading(false);
       }
-      return; 
+      return;
     }
     
     if (result && result.user) {
       console.log('[AuthContext] signInWithGoogle: User object from result:', result.user);
-      setCurrentUser(result.user); // Update current user state immediately
+      setCurrentUser(result.user);
       
       console.log('[AuthContext] signInWithGoogle: Raw result.credential object:', result.credential);
-
-      // IMPORTANT: This is where we expect the OAuthCredential for Google services
-      const credential = result.credential as OAuthCredential | null; 
+      const credential = result.credential as OAuthCredential | null;
 
       if (credential && credential.accessToken) {
         const token = credential.accessToken;
@@ -149,11 +152,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken');
         toast({
           variant: "destructive",
-          title: "Sign-In Permissions Issue (Gmail Access Token)",
-          description: "Sign-in to MailSage was successful, but the specific OAuth access token for Gmail was not obtained. This can happen if Gmail permissions were denied on the consent screen, if the Gmail API is not enabled in your Google Cloud Project, or if your app (in 'Testing' mode on GCP) doesn't list this account as a 'Test user'. Please check consent choices, ensure Gmail API is enabled in GCP, and verify 'Test user' settings if applicable.",
+          title: "Sign-In Permissions Issue (Gmail Access Token Missing)",
+          description: "MailSage sign-in was successful, but the specific OAuth access token for Gmail was NOT obtained. This can happen if Gmail permissions were denied/cancelled on the consent screen, if the Gmail API is not enabled in your Google Cloud Project, if your OAuth Consent Screen is in 'Testing' mode and this account isn't a 'Test user', or other OAuth configuration issues. Please check console logs and Google Cloud settings.",
           action: <Button variant="outline" size="sm" onClick={() => {
             signOutUser().then(() => signInWithGoogle());
-          }}>Re-Authenticate</Button>
+          }}>Re-Authenticate</Button>,
+          duration: 15000, // Longer duration for this important message
         });
       }
     } else {
@@ -163,13 +167,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         title: "Sign-In Failed Unexpectedly",
         description: "Could not complete sign-in with Google due to an unexpected issue. Please try again.",
       });
-      // setLoading(false) might already be handled by onAuthStateChanged if user becomes null
     }
     
-    // If after all this, loading is still true and no user, set loading to false.
-    // This covers edge cases where onAuthStateChanged might not fire immediately or as expected.
-    // However, onAuthStateChanged should set loading to false once user state stabilizes.
-    // The primary setLoading(false) call is within onAuthStateChanged.
     console.log("[AuthContext] signInWithGoogle: End of function. Current loading state:", loading, "CurrentUser UID:", auth.currentUser?.uid);
   };
 
@@ -178,13 +177,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     try {
       await firebaseSignOut(auth);
-      // setGoogleAccessToken(null); // Done by onAuthStateChanged
-      // if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken'); // Done by onAuthStateChanged
       toast({
         title: "Signed Out",
         description: "You have been successfully signed out.",
       });
-      // router.push('/'); // Navigation is handled by the useEffect down below
     } catch (error: any) {
       console.error("[AuthContext] signOutUser: Error during sign-out:", error);
       toast({
@@ -192,7 +188,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         title: "Sign-Out Failed",
         description: error.message || "Could not sign out. Please try again.",
       });
-      setLoading(false); // Ensure loading is false if sign-out errors
+      setLoading(false);
     }
   };
 
@@ -205,7 +201,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const tokenFromStorage = sessionStorage.getItem('googleAccessToken');
         if (tokenFromStorage) {
             console.log('[AuthContext] getGoogleAccessToken: Token not in state, but found in sessionStorage. Syncing to state and returning.');
-            setGoogleAccessToken(tokenFromStorage); 
+            setGoogleAccessToken(tokenFromStorage);
             return tokenFromStorage;
         }
     }
