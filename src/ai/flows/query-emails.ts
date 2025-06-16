@@ -39,19 +39,30 @@ export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsO
   // This is the first log in the exported function.
   console.log(`[queryEmailsFlow EXPORTED_FUNCTION_ENTRY] Received input. User Query: "${input.query}", Access Token (first 10 chars): ${input.accessToken ? input.accessToken.substring(0,10) + '...' : 'MISSING'}`);
   
+  if (!input.accessToken) {
+    const errorMsg = `[queryEmailsFlow EXPORTED_FUNCTION_ERROR] Access token is missing in input. Query: "${input.query}". Cannot query emails.`;
+    console.error(errorMsg);
+    // For a 502, this might indicate the client sent a bad request, but the server should still ideally respond, not crash.
+    // However, if the server *is* crashing, this log might not make it.
+    return { emailList: [] }; // Return a default to prevent client breaking if server doesn't crash
+  }
+
   console.log(`[queryEmailsFlow GENKIT_FLOW_RUN] Attempting to call queryEmailsFlow with input. User Query: "${input.query}"`);
   try {
     const result = await queryEmailsFlow(input);
-    console.log(`[queryEmailsFlow EXPORTED_FUNCTION_EXIT] Successfully returning ${result.emailList.length} emails from Genkit flow.`);
+    console.log(`[queryEmailsFlow EXPORTED_FUNCTION_EXIT] Successfully returning ${result.emailList.length} emails from Genkit flow. Query: "${input.query}"`);
     return result;
-  } catch (error) {
-    console.error(`[queryEmailsFlow EXPORTED_FUNCTION_ERROR] Error during queryEmailsFlow execution:`, error);
-    if (error instanceof Error) {
-        // It's often better to throw a new error or a more structured error object
-        // to the client rather than just the message, but for now:
-        throw new Error(`Error in queryEmails flow: ${error.message}`);
+  } catch (error: any) {
+    // This catch block is CRITICAL for diagnosing 502s if the error originates within the Genkit flow
+    console.error(`[queryEmailsFlow EXPORTED_FUNCTION_ERROR] CRITICAL ERROR during queryEmailsFlow execution for query "${input.query}". Error: ${error.message}`, error);
+    // Log the full error object, including stack if available
+    if (error.stack) {
+      console.error(`[queryEmailsFlow EXPORTED_FUNCTION_ERROR] Stack trace: ${error.stack}`);
     }
-    throw new Error('An unknown error occurred in the queryEmails flow.');
+    // It's often better to throw a new error or a more structured error object
+    // to the client rather than just the message, but for now, let's ensure server logs it.
+    // To prevent a 502 if this catch is hit AND the server doesn't die, return a valid structure.
+    return { emailList: [] }; // Or: throw new Error(`Error in queryEmails flow: ${error.message}`); to see if client gets a different error
   }
 }
 
@@ -110,6 +121,7 @@ const queryEmailsFlow = ai.defineFlow(
     console.log(`[queryEmailsFlow GENKIT_FLOW_RUN] Flow execution started. User Query: "${input.query}"`);
     if (!input.accessToken) {
       console.error("[queryEmailsFlow GENKIT_FLOW_RUN] Access token is missing. Cannot query emails from Gmail.");
+      // This should ideally be caught by the wrapper, but defensive check here.
       throw new Error("Access token is missing. Cannot query emails from Gmail.");
     }
 
@@ -147,4 +159,3 @@ const queryEmailsFlow = ai.defineFlow(
     return output;
   }
 );
-
