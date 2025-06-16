@@ -39,26 +39,6 @@ export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsO
   // This is the first log in the exported function.
   console.log(`[queryEmailsFlow EXPORTED_FUNCTION_ENTRY] Received input. User Query: "${input.query}", Access Token (first 10 chars): ${input.accessToken ? input.accessToken.substring(0,10) + '...' : 'MISSING'}`);
   
-  // ---- TEMPORARY DIAGNOSTIC ----
-  // If this log appears in Cloud Logging, and client gets this hardcoded result,
-  // then the function is running, but previous logs might not have flushed or been captured.
-  console.log('[queryEmailsFlow EXPORTED_FUNCTION_ENTRY] Attempting to return hardcoded result for diagnostics.');
-  return {
-    emailList: [
-      {
-        id: 'diagnostic-test-id-1',
-        sender: 'Diagnostic Sender',
-        subject: 'Diagnostic Subject - Hardcoded Email',
-        snippet: 'This is a hardcoded snippet from the server action for diagnostic purposes.',
-        timestamp: Date.now(),
-        summary: 'This is a hardcoded AI summary from the server action for diagnostics.',
-      }
-    ]
-  };
-  // ---- END TEMPORARY DIAGNOSTIC ----
-
-  /*
-  // Original logic temporarily commented out:
   console.log(`[queryEmailsFlow GENKIT_FLOW_RUN] Attempting to call queryEmailsFlow with input. User Query: "${input.query}"`);
   try {
     const result = await queryEmailsFlow(input);
@@ -73,7 +53,6 @@ export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsO
     }
     throw new Error('An unknown error occurred in the queryEmails flow.');
   }
-  */
 }
 
 const prompt = ai.definePrompt({
@@ -149,7 +128,7 @@ const queryEmailsFlow = ai.defineFlow(
       userQuery: input.query,
       fetchedGmailEmails: actualEmailsData,
     };
-    console.log(`[queryEmailsFlow GENKIT_FLOW_RUN] Calling AI prompt with userQuery: "${input.query}" and ${actualEmailsData.length} fetched emails.`);
+    console.log(`[queryEmailsFlow GENKIT_FLOW_RUN] Calling AI prompt with userQuery: "${input.query}" and ${actualEmailsData.length} fetched emails. Prompt input (first email if any): ${actualEmailsData.length > 0 ? JSON.stringify(promptInput.fetchedGmailEmails[0]) : 'N/A'}`);
     
     const { output } = await prompt(promptInput);
 
@@ -168,3 +147,4 @@ const queryEmailsFlow = ai.defineFlow(
     return output;
   }
 );
+

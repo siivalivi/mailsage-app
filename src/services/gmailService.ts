@@ -107,13 +107,14 @@ export async function fetchGmailMessages(
     }
 
     const fetchedEmails: FetchedEmailData[] = [];
-    console.log('[gmailService] fetchGmailMessages: Attempting to fetch details for each message ID...');
+    console.log(`[gmailService] fetchGmailMessages: Attempting to fetch details for ${Math.min(numMessagesFound, maxResults)} message ID(s)...`);
 
     for (const messageInfo of listResult.messages.slice(0, maxResults)) {
       const messageId = messageInfo.id;
+      // Using format=METADATA to get subject, from, date, and snippet efficiently
       const messageUrl = `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`;
       
-      console.log(`[gmailService] fetchGmailMessages: Fetching metadata for message ID ${messageId} from URL: ${messageUrl}`);
+      console.log(`[gmailService] fetchGmailMessages: Fetching metadata for message ID ${messageId}`);
       const messageResponse = await fetch(messageUrl, {
         method: 'GET',
         headers: {
@@ -135,7 +136,7 @@ export async function fetchGmailMessages(
         id: messageData.id,
         sender: getHeaderValue(messageData.payload.headers, 'From'),
         subject: getHeaderValue(messageData.payload.headers, 'Subject'),
-        snippet: messageData.snippet,
+        snippet: messageData.snippet, // snippet is directly available with format=metadata
         timestamp: parseInt(messageData.internalDate, 10),
       };
       fetchedEmails.push(emailEntry);
@@ -150,6 +151,8 @@ export async function fetchGmailMessages(
   } catch (error) {
     console.error('[gmailService] fetchGmailMessages: Error during processing:', error);
     if (error instanceof Error) {
+        // Log the full error object which might contain more details like stack trace
+        console.error('[gmailService] fetchGmailMessages: Full error object:', error);
         throw new Error(`Could not fetch Gmail messages: ${error.message}`);
     }
     throw new Error('An unknown error occurred while fetching Gmail messages.');
@@ -176,7 +179,7 @@ export async function fetchGmailMessageBody(accessToken: string, messageId: stri
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: response.statusText }));
-      console.error(`[gmailService] fetchGmailMessageBody: Gmail API error (get message) - Status: ${response.status}, Response:`, errorData);
+      console.error(`[gmailService] fetchGmailMessageBody: Gmail API error (get message) - Status: ${response.status}, Response:`, JSON.stringify(errorData));
       throw new Error(`Failed to fetch email body for ${messageId}: ${errorData?.error?.message || response.statusText}`);
     }
     const message: GmailMessage = await response.json();
@@ -186,30 +189,40 @@ export async function fetchGmailMessageBody(accessToken: string, messageId: stri
       if (message.payload.mimeType === 'text/plain' && message.payload.body.data) {
         bodyContent = decodeBase64Url(message.payload.body.data);
       } else if (message.payload.mimeType === 'text/html' && message.payload.body.data) {
+        // Prefer text/plain if available, but use text/html as fallback.
+        // For display, HTML might be better, but for AI processing, plain text is often preferred.
+        // Here, we're just getting content. The EmailView component can handle HTML.
         bodyContent = decodeBase64Url(message.payload.body.data); 
       } else if (message.payload.parts) {
-        let textPart = message.payload.parts.find(part => part.mimeType === 'text/plain');
-        if (textPart && textPart.body.data) {
-          bodyContent = decodeBase64Url(textPart.body.data);
-        } else {
-          let htmlPart = message.payload.parts.find(part => part.mimeType === 'text/html');
-          if (htmlPart && htmlPart.body.data) {
-            bodyContent = decodeBase64Url(htmlPart.body.data);
-          } else {
-            const findBodyInParts = (parts: GmailMessagePart[]): string | null => {
-              for (const part of parts) {
-                if (part.mimeType === 'text/plain' && part.body.data) return decodeBase64Url(part.body.data);
-                if (part.mimeType === 'text/html' && part.body.data) return decodeBase64Url(part.body.data); 
-                if (part.parts) {
-                  const nestedBody = findBodyInParts(part.parts);
-                  if (nestedBody) return nestedBody;
-                }
+        // Recursive function to find the first text/plain or text/html part
+        const findBodyInParts = (parts: GmailMessagePart[]): string | null => {
+          let plainText: string | null = null;
+          let htmlText: string | null = null;
+
+          for (const part of parts) {
+            if (part.mimeType === 'text/plain' && part.body.data) {
+              plainText = decodeBase64Url(part.body.data);
+              break; // Prefer plain text, so break if found
+            }
+            if (part.mimeType === 'text/html' && part.body.data) {
+              htmlText = decodeBase64Url(part.body.data);
+            }
+            if (part.parts) {
+              const nestedBody = findBodyInParts(part.parts);
+              // If nested search found plain text, prioritize it
+              if (nestedBody && (!plainText || (part.parts.some(p => p.mimeType === 'text/plain') && nestedBody) ) ) {
+                 // This logic is a bit complex, simplify to just take first available or preferred one.
+                 // Let's just take the first text/plain or text/html we find.
+                 return nestedBody; 
               }
-              return null;
-            };
-            const foundBody = findBodyInParts(message.payload.parts);
-            if (foundBody) bodyContent = foundBody;
+            }
           }
+          return plainText || htmlText; // Return plain text if found, otherwise html text, otherwise null
+        };
+        
+        const foundBody = findBodyInParts(message.payload.parts);
+        if (foundBody) {
+          bodyContent = foundBody;
         }
       }
     }
@@ -217,7 +230,11 @@ export async function fetchGmailMessageBody(accessToken: string, messageId: stri
     return bodyContent || message.snippet || "Email body could not be extracted.";
   } catch (error) {
     console.error(`[gmailService] fetchGmailMessageBody: Error fetching/processing body for message ${messageId}:`, error);
-    if (error instanceof Error) throw error;
+    if (error instanceof Error) {
+         console.error('[gmailService] fetchGmailMessageBody: Full error object:', error);
+         throw error;
+    }
     throw new Error('An unknown error occurred while fetching email body.');
   }
 }
+
