@@ -54,7 +54,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.log('[AuthContext] Root effect cleanup: Unsubscribing from onAuthStateChanged.');
       unsubscribe();
     };
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); 
 
 
   useEffect(() => {
@@ -133,13 +134,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       console.log('[AuthContext] signInWithGoogle: Raw result.credential object:', result.credential);
       const credential = result.credential as OAuthCredential | null;
+      let obtainedGmailToken: string | null = null;
 
       if (credential && credential.accessToken) {
-        const token = credential.accessToken;
-        console.log('[AuthContext] signInWithGoogle: Google OAuth AccessToken for Google Services OBTAINED:', token.substring(0, 20) + "...");
-        setGoogleAccessToken(token);
+        obtainedGmailToken = credential.accessToken;
+        console.log('[AuthContext] signInWithGoogle: Google OAuth AccessToken for Google Services OBTAINED via result.credential:', obtainedGmailToken.substring(0, 20) + "...");
+      } else if ((result as any)._tokenResponse?.oauthAccessToken) {
+        // Fallback to _tokenResponse if result.credential doesn't yield the token
+        obtainedGmailToken = (result as any)._tokenResponse.oauthAccessToken;
+        console.log('[AuthContext] signInWithGoogle: Google OAuth AccessToken for Google Services OBTAINED via _tokenResponse.oauthAccessToken:', obtainedGmailToken.substring(0, 20) + "...");
+        // Additionally log the scopes from _tokenResponse.rawUserInfo to confirm gmail.readonly was granted
+        const rawUserInfo = (result as any)._tokenResponse?.rawUserInfo;
+        if (rawUserInfo) {
+            try {
+                const userInfo = JSON.parse(rawUserInfo);
+                console.log('[AuthContext] signInWithGoogle: Granted scopes from _tokenResponse.rawUserInfo:', userInfo.granted_scopes);
+            } catch (e) {
+                console.warn('[AuthContext] signInWithGoogle: Could not parse rawUserInfo from _tokenResponse:', e);
+            }
+        }
+      }
+
+
+      if (obtainedGmailToken) {
+        setGoogleAccessToken(obtainedGmailToken);
         if (typeof window !== 'undefined') {
-          sessionStorage.setItem('googleAccessToken', token);
+          sessionStorage.setItem('googleAccessToken', obtainedGmailToken);
           console.log('[AuthContext] signInWithGoogle: Google OAuth Token stored in sessionStorage.');
         }
         toast({
@@ -147,17 +167,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           description: "Successfully obtained permissions to access Gmail.",
         });
       } else {
-        console.warn('[AuthContext] signInWithGoogle: Google OAuth Credential object from result is NULL or lacks an accessToken. This is needed for Gmail. User object from result:', result.user);
+        console.warn('[AuthContext] signInWithGoogle: Google OAuth Credential object from result is NULL or lacks an accessToken, AND _tokenResponse.oauthAccessToken was also not found/used. This is needed for Gmail. User object from result:', result.user);
         setGoogleAccessToken(null);
         if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken');
         toast({
           variant: "destructive",
           title: "Sign-In Permissions Issue (Gmail Access Token Missing)",
-          description: "MailSage sign-in was successful, but the specific OAuth access token for Gmail was NOT obtained. This can happen if Gmail permissions were denied/cancelled on the consent screen, if the Gmail API is not enabled in your Google Cloud Project, if your OAuth Consent Screen is in 'Testing' mode and this account isn't a 'Test user', or other OAuth configuration issues. Please check console logs and Google Cloud settings.",
+          description: "MailSage sign-in was successful, but the specific OAuth access token for Gmail was NOT obtained. This can happen if Gmail permissions were denied/cancelled on the consent screen, if the Gmail API is not enabled in your Google Cloud Project, if your OAuth Consent Screen is in 'Testing' mode and this account isn't a 'Test user', or other OAuth configuration issues. Please check console logs and Google Cloud settings. Ensure Gmail API is enabled in Google Cloud.",
           action: <Button variant="outline" size="sm" onClick={() => {
             signOutUser().then(() => signInWithGoogle());
           }}>Re-Authenticate</Button>,
-          duration: 15000, // Longer duration for this important message
+          duration: 15000, 
         });
       }
     } else {
@@ -181,6 +201,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         title: "Signed Out",
         description: "You have been successfully signed out.",
       });
+      // Clear the googleAccessToken from state and sessionStorage on sign out
+      setGoogleAccessToken(null);
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('googleAccessToken');
+        console.log('[AuthContext] signOutUser: Cleared Google OAuth Token from sessionStorage.');
+      }
     } catch (error: any) {
       console.error("[AuthContext] signOutUser: Error during sign-out:", error);
       toast({
@@ -188,7 +214,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         title: "Sign-Out Failed",
         description: error.message || "Could not sign out. Please try again.",
       });
-      setLoading(false);
+    } finally {
+        // This ensures loading is set to false regardless of auth state change timing
+        // especially if onAuthStateChanged doesn't fire immediately or as expected.
+        if (auth.currentUser === null) { // only set loading false if user is actually null
+             console.log("[AuthContext] signOutUser: User is null after sign out, setting loading to false.");
+             setLoading(false);
+        } else {
+            console.log("[AuthContext] signOutUser: User is NOT null immediately after sign out, onAuthStateChanged will handle loading state.");
+        }
     }
   };
 
@@ -221,7 +255,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         router.push('/');
       }
     }
-  }, [currentUser, loading, router, pathname]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, loading, router, pathname]); // Added router and pathname as dependencies
 
   return (
     <AuthContext.Provider value={{ currentUser, loading, signInWithGoogle, signOutUser, getGoogleAccessToken }}>
@@ -238,3 +273,4 @@ export const useAuth = () => {
   return context;
 };
 
+    
