@@ -19,38 +19,31 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      const token = sessionStorage.getItem('googleAccessToken');
-      console.log('[AuthContext] Initializer: Token from sessionStorage:', token ? token.substring(0,10)+'...' : 'null');
-      return token;
-    }
-    return null;
-  });
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
 
   useEffect(() => {
-    console.log('[AuthContext] Root effect (onAuthStateChanged subscription setup). Initializing loading to true.');
-    setLoading(true); 
+    console.log('[AuthContext] Root effect: Initializing. Setting loading to true.');
+    setLoading(true);
     const unsubscribe = auth.onAuthStateChanged(user => {
       console.log('[AuthContext] onAuthStateChanged: Firebase user event. User UID:', user?.uid);
       setCurrentUser(user);
       if (user) {
         const tokenFromStorage = typeof window !== 'undefined' ? sessionStorage.getItem('googleAccessToken') : null;
-        console.log(`[AuthContext] onAuthStateChanged: User IS PRESENT. Token from storage: ${tokenFromStorage ? tokenFromStorage.substring(0,10)+'...' : 'null'}. Current state token: ${googleAccessToken ? googleAccessToken.substring(0,10)+'...' : 'null'}`);
+        console.log(`[AuthContext] onAuthStateChanged: User IS PRESENT. Token from sessionStorage: ${tokenFromStorage ? tokenFromStorage.substring(0,10)+'...' : 'null'}. Current state token: ${googleAccessToken ? googleAccessToken.substring(0,10)+'...' : 'null'}`);
         
         if (tokenFromStorage && googleAccessToken !== tokenFromStorage) {
-            console.log('[AuthContext] onAuthStateChanged: Syncing token from sessionStorage to state because different.');
+            console.log('[AuthContext] onAuthStateChanged: Syncing token from sessionStorage to state.');
             setGoogleAccessToken(tokenFromStorage);
         } else if (tokenFromStorage && !googleAccessToken) {
-            console.log('[AuthContext] onAuthStateChanged: User PRESENT. Token in sessionStorage but NOT in state (e.g. after page load or state loss). Syncing.');
+            console.log('[AuthContext] onAuthStateChanged: User PRESENT. Token in sessionStorage but NOT in state. Syncing.');
             setGoogleAccessToken(tokenFromStorage);
         } else if (!tokenFromStorage && googleAccessToken) {
-             console.warn('[AuthContext] onAuthStateChanged: User PRESENT. Token in state but NOT in sessionStorage. This could happen if storage was cleared externally. Clearing state token.');
-             setGoogleAccessToken(null); // sessionStorage is source of truth after sign-in.
+             console.warn('[AuthContext] onAuthStateChanged: User PRESENT. Token in state but NOT in sessionStorage. Clearing state token.');
+             setGoogleAccessToken(null);
         }
       } else {
         console.log('[AuthContext] onAuthStateChanged: User IS NULL (signed out). Clearing token state and sessionStorage.');
@@ -65,42 +58,54 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       unsubscribe();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps 
-  }, []); // googleAccessToken removed from deps to prevent loops, sessionStorage sync is handled inside.
+  }, []);
+
+
+  useEffect(() => {
+    // Initialize token from sessionStorage on mount if not already set by onAuthStateChanged
+    if (typeof window !== 'undefined' && !googleAccessToken) {
+        const tokenFromStorage = sessionStorage.getItem('googleAccessToken');
+        if (tokenFromStorage) {
+            console.log('[AuthContext] Initial mount/hydration effect: Found token in sessionStorage. Setting state.');
+            setGoogleAccessToken(tokenFromStorage);
+        }
+    }
+  }, []); // Runs once on mount
+
 
   const signInWithGoogle = async () => {
     console.log('[AuthContext] signInWithGoogle: Initiating sign-in. Setting loading to true.');
     setLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      console.log('[AuthContext] signInWithGoogle: popup result object:', result); 
+      console.log('[AuthContext] signInWithGoogle: popup result object received. User:', result.user?.uid); 
       
+      // THIS IS THE CRITICAL PART: result.credential
       const credential = result.credential as OAuthCredential | null;
-      // Log the credential object in detail to understand its structure or why it might be null
+
       if (credential) {
-        console.log('[AuthContext] signInWithGoogle: credential object from result IS PRESENT. Details:', JSON.stringify(credential)); 
+        console.log('[AuthContext] signInWithGoogle: credential object from result IS PRESENT.');
         if (credential.accessToken) {
           const token = credential.accessToken;
-          console.log('[AuthContext] signInWithGoogle: AccessToken OBTAINED:', token.substring(0, 20) + "...");
+          console.log('[AuthContext] signInWithGoogle: OAuth AccessToken for Google Services OBTAINED:', token.substring(0, 20) + "...");
           setGoogleAccessToken(token);
           if (typeof window !== 'undefined') {
             sessionStorage.setItem('googleAccessToken', token);
-            console.log('[AuthContext] signInWithGoogle: Token stored in sessionStorage.');
+            console.log('[AuthContext] signInWithGoogle: OAuth Token stored in sessionStorage.');
           }
           toast({
             title: "Signed In & Gmail Access Granted",
             description: "Successfully obtained permissions to access Gmail.",
           });
-          // currentUser will be set by onAuthStateChanged, which also sets loading to false.
         } else {
-          console.warn('[AuthContext] signInWithGoogle: Credential object PRESENT but accessToken property is MISSING or falsy.');
+          console.warn('[AuthContext] signInWithGoogle: Credential object PRESENT but its accessToken property is MISSING or falsy.');
           setGoogleAccessToken(null); 
           if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken');
           toast({
             variant: "destructive",
-            title: "Gmail Permission Issue",
-            description: "Sign-in was successful, but could not retrieve Gmail access token. Ensure Gmail API is enabled in Google Cloud Console and you grant permissions on the consent screen.",
+            title: "Gmail Permission Token Issue",
+            description: "Sign-in was successful, but could not retrieve the specific Gmail access token from the credential. Ensure Gmail API is enabled and you grant all permissions on the consent screen.",
           });
-          setLoading(false); // setLoading false here because onAuthStateChanged might not fire if user is already set
         }
       } else {
         console.warn('[AuthContext] signInWithGoogle: Google OAuth Credential object from result is NULL. User object from result:', result.user);
@@ -108,10 +113,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (typeof window !== 'undefined') sessionStorage.removeItem('googleAccessToken');
         toast({
           variant: "destructive",
-          title: "Sign-In Permissions Issue",
-          description: "Could not retrieve Google OAuth credential for Gmail access. Please ensure pop-ups are allowed, you grant Gmail access when prompted, and the Gmail API is enabled in your Google Cloud Console project. Also check if your account is a test user if the app is in testing mode.",
+          title: "Critical: OAuth Credential for Gmail Missing",
+          description: "Google Sign-In did not provide an OAuth Credential for Gmail access. This often means permissions were not granted on the consent screen, or there's an OAuth configuration issue (e.g., app in 'Testing' mode but user isn't a 'Test user', or Gmail API not fully enabled/propagated). Please check Google Cloud Console.",
         });
-        setLoading(false); // setLoading false here if credential is null
       }
     } catch (error: any) {
       console.error("[AuthContext] signInWithGoogle: Error during sign-in popup:", error);
@@ -123,7 +127,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description: error.message || "Could not sign in with Google. Please try again.",
         action: <Button variant="outline" size="sm" onClick={() => signInWithGoogle()}>Try Again</Button>,
       });
-      setLoading(false); 
+    } finally {
+        // Loading will be set to false by onAuthStateChanged, or here if an early error occurs.
+        // However, ensure it's always set if signInWithGoogle completes but onAuthStateChanged might be delayed or not fire.
+        if (!auth.currentUser) { // If after all this, there's still no currentUser, then set loading false.
+             setLoading(false);
+             console.log("[AuthContext] signInWithGoogle: Setting loading false in finally block as no currentUser yet.");
+        }
     }
   };
 
@@ -132,13 +142,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     try {
       await firebaseSignOut(auth);
-      // setGoogleAccessToken(null), sessionStorage.removeItem, and setCurrentUser(null) are handled by onAuthStateChanged
-      // which also sets loading to false.
       toast({
         title: "Signed Out",
         description: "You have been successfully signed out.",
       });
-      // No need to manually set loading to false; onAuthStateChanged will handle it.
     } catch (error: any) {
       console.error("[AuthContext] signOutUser: Error during sign-out:", error);
       toast({
@@ -146,23 +153,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         title: "Sign-Out Failed",
         description: error.message || "Could not sign out. Please try again.",
       });
-      setLoading(false); // Set loading false here in case onAuthStateChanged doesn't fire or is delayed
+    } finally {
+        // onAuthStateChanged will handle setCurrentUser(null), setGoogleAccessToken(null), and setLoading(false)
+        // Adding a safeguard if onAuthStateChanged is slow or fails.
+        if (auth.currentUser) {
+            setLoading(false); // Should not happen, means sign out failed but error wasn't caught
+        }
     }
   };
 
   const getGoogleAccessToken = (): string | null => {
-    console.log('[AuthContext] getGoogleAccessToken called. Current state token:', googleAccessToken ? googleAccessToken.substring(0,10)+'...' : 'null');
     if (typeof window !== 'undefined') {
         const tokenFromStorage = sessionStorage.getItem('googleAccessToken');
-        if (!googleAccessToken && tokenFromStorage) {
-            console.log('[AuthContext] getGoogleAccessToken: State token is null, but found token in storage. Returning storage token and updating state.');
+        if (tokenFromStorage && tokenFromStorage !== googleAccessToken) {
+            console.log('[AuthContext] getGoogleAccessToken: Syncing token from sessionStorage to state during access.');
             setGoogleAccessToken(tokenFromStorage);
             return tokenFromStorage;
         }
-         if (googleAccessToken && tokenFromStorage && googleAccessToken !== tokenFromStorage) {
-            console.warn('[AuthContext] getGoogleAccessToken: State token MISMATCHES storage token. Preferring state, but this is unusual. State:', googleAccessToken.substring(0,10)+'...', 'Storage:', tokenFromStorage.substring(0,10)+'...');
-        }
     }
+    console.log('[AuthContext] getGoogleAccessToken called. Returning current state token:', googleAccessToken ? googleAccessToken.substring(0,10)+'...' : 'null');
     return googleAccessToken;
   };
   
