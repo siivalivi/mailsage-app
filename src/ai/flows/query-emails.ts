@@ -37,6 +37,7 @@ const QueryEmailsOutputSchema = z.object({
 export type QueryEmailsOutput = z.infer<typeof QueryEmailsOutputSchema>;
 
 export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsOutput> {
+  console.log('[queryEmailsFlow] Received input. User Query:', input.query, 'Access Token (first 10 chars):', input.accessToken ? input.accessToken.substring(0,10) + '...' : 'MISSING');
   return queryEmailsFlow(input);
 }
 
@@ -69,6 +70,7 @@ Your tasks are:
     - The summary should be distinct from the original snippet, adding analytical value.
 4. If an email from the provided list does not seem relevant to the user's specific query "{{userQuery}}", DO NOT include it in your output.
 5. If no emails from the list are relevant after your analysis, return an empty list.
+6. If all emails are relevant, summarize all of them.
 
 Return a list of these processed emails. Each item in your list should include the original 'id', 'sender', 'subject', 'snippet', 'timestamp', and your newly generated 'summary'.
 
@@ -91,27 +93,44 @@ const queryEmailsFlow = ai.defineFlow(
     outputSchema: QueryEmailsOutputSchema,
   },
   async (input: QueryEmailsInput) => {
+    console.log('[queryEmailsFlow] Flow execution started. User Query:', input.query);
     if (!input.accessToken) {
+      console.error("[queryEmailsFlow] Access token is missing. Cannot query emails from Gmail.");
       throw new Error("Access token is missing. Cannot query emails from Gmail.");
     }
 
     // 1. Fetch real emails using the gmailService.
     // The user's query string is passed to Gmail's 'q' parameter for initial filtering.
+    console.log('[queryEmailsFlow] Calling fetchGmailMessages...');
     const actualEmailsData: FetchedEmailData[] = await fetchGmailMessages(input.accessToken, input.query, 20);
+    console.log(`[queryEmailsFlow] fetchGmailMessages returned ${actualEmailsData.length} email(s).`);
+    if (actualEmailsData.length > 0) {
+        console.log('[queryEmailsFlow] Data from fetchGmailMessages (first 3 subjects):', actualEmailsData.slice(0,3).map(e => e.subject));
+    }
+
 
     if (actualEmailsData.length === 0) {
-      return { emailList: [] }; // No emails found by Gmail or error during fetch
+      console.log('[queryEmailsFlow] No emails found by gmailService or error during fetch. Returning empty list.');
+      return { emailList: [] }; 
     }
     
     // 2. Pass the fetched emails and the original user query to the AI prompt for further selection and summarization.
-    const { output } = await prompt({
+    const promptInput = {
       userQuery: input.query,
       fetchedGmailEmails: actualEmailsData,
-    });
+    };
+    console.log('[queryEmailsFlow] Calling AI prompt with userQuery:', input.query, 'and', actualEmailsData.length, 'fetched emails.');
+    
+    const { output } = await prompt(promptInput);
 
     if (!output) {
-        console.error("AI prompt did not return an output for queryEmailsFlow.");
-        return { emailList: [] }; // Should ideally match schema with empty list
+        console.error("[queryEmailsFlow] AI prompt did not return an output. Returning empty list.");
+        return { emailList: [] }; 
+    }
+    
+    console.log(`[queryEmailsFlow] AI prompt returned ${output.emailList.length} email(s) after processing.`);
+    if (output.emailList.length > 0) {
+        console.log('[queryEmailsFlow] AI output (first 3 subjects from AI):', output.emailList.slice(0,3).map(e => e.subject));
     }
     
     // The AI's output is expected to match QueryEmailsOutputSchema directly.
