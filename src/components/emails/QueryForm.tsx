@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 
 const formSchema = z.object({
-  query: z.string().min(1, { message: 'Query cannot be empty.' }), // Min 1 for more flexible queries to Gmail
+  query: z.string().min(1, { message: 'Query cannot be empty.' }),
 });
 
 type QueryFormValues = z.infer<typeof formSchema>;
@@ -37,12 +37,15 @@ export default function QueryForm({ onQuerySubmit, setIsLoading }: QueryFormProp
   });
 
   const onSubmit: SubmitHandler<QueryFormValues> = async (data) => {
+    console.log('[QueryForm] onSubmit called. Data:', data);
     if (!currentUser) {
       toast({ variant: 'destructive', title: 'Not Authenticated', description: 'Please sign in to query emails.' });
+      setIsLoading(false); // Ensure loading is false if we return early
       return;
     }
 
-    let accessToken = getGoogleAccessToken();
+    const accessToken = getGoogleAccessToken();
+    console.log(`[QueryForm] AccessToken for query: ${accessToken ? accessToken.substring(0,10) + '...' : 'MISSING'}`);
 
     if (!accessToken) {
       toast({
@@ -50,8 +53,7 @@ export default function QueryForm({ onQuerySubmit, setIsLoading }: QueryFormProp
         title: 'Authentication Error',
         description: 'Access token for Gmail is missing or expired. Please try signing in again to refresh permissions.',
         action: <Button variant="outline" size="sm" onClick={async () => {
-          await signInWithGoogle(); // Attempt to re-sign in / refresh token
-          // After re-sign in, the token should be available. User might need to submit form again.
+          await signInWithGoogle();
         }}>Refresh Sign-In</Button>
       });
       setIsLoading(false);
@@ -61,33 +63,44 @@ export default function QueryForm({ onQuerySubmit, setIsLoading }: QueryFormProp
     setIsSubmitting(true);
     setIsLoading(true);
     try {
+      console.log(`[QueryForm] Attempting to call queryEmails server action with query: "${data.query}" and accessToken (first 10): ${accessToken.substring(0,10)}...`);
       const result = await queryEmails({ query: data.query, accessToken });
+      console.log('[QueryForm] queryEmails server action returned. Result:', result);
       onQuerySubmit(result.emailList);
       toast({
-        title: 'Gmail Query Successful',
+        title: 'Gmail Query Processed',
         description: `Found and processed ${result.emailList.length} email(s) from your Gmail account.`,
       });
     } catch (error: any) {
-      console.error('Error querying emails:', error);
-      // Check for specific token-related errors if possible
-      if (error.message && (error.message.includes('401') || error.message.toLowerCase().includes('token'))) {
-         toast({
+      console.error('[QueryForm] Error calling queryEmails server action:', error);
+      let errorMessage = 'An error occurred while querying your emails from Gmail.';
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      toast({
+        variant: 'destructive',
+        title: 'Gmail Query Failed',
+        description: errorMessage,
+        duration: 7000, // Longer duration for error messages
+      });
+      // Check for specific token-related errors if possible (though this error is client-side interpretation)
+      if (errorMessage.includes('401') || errorMessage.toLowerCase().includes('token')) {
+         toast({ // This might show a second toast, or can be combined
             variant: 'destructive',
-            title: 'Gmail Access Expired/Revoked',
-            description: 'Your permission to access Gmail may have expired. Please try signing in again.',
-            action: <Button variant="outline" size="sm" onClick={signInWithGoogle}>Refresh Sign-In</Button>
+            title: 'Gmail Access Expired/Revoked?',
+            description: 'Permission to access Gmail may have expired. Please try signing in again.',
+            action: <Button variant="outline" size="sm" onClick={signInWithGoogle}>Refresh Sign-In</Button>,
+            duration: 10000,
          });
-      } else {
-        toast({
-          variant: 'destructive',
-          title: 'Gmail Query Failed',
-          description: error.message || 'An error occurred while querying your emails from Gmail.',
-        });
       }
       onQuerySubmit([]); 
     } finally {
       setIsSubmitting(false);
       setIsLoading(false);
+      console.log('[QueryForm] onSubmit finally block. isSubmitting:', false, 'isLoading:', false);
     }
   };
 
