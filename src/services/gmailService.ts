@@ -70,12 +70,12 @@ export async function fetchGmailMessages(
     console.error('[gmailService] fetchGmailMessages: Access token is required.');
     throw new Error('Access token is required to fetch Gmail messages.');
   }
-  console.log(`[gmailService] fetchGmailMessages: Called with queryString="${queryString}", maxResults=${maxResults}, accessToken (first 10): ${accessToken ? accessToken.substring(0,10) + '...' : 'MISSING'}`);
+  console.log(`[gmailService] fetchGmailMessages: START. QueryString="${queryString}", MaxResults=${maxResults}, AccessToken (first 10): ${accessToken ? accessToken.substring(0,10) + '...' : 'MISSING'}`);
 
   let apiUrl = `https://www.googleapis.com/gmail/v1/users/me/messages?maxResults=${maxResults}`;
   if (queryString && queryString.trim() !== "") {
     apiUrl += `&q=${encodeURIComponent(queryString.trim())}`;
-    console.log(`[gmailService] fetchGmailMessages: User query string provided: "${queryString.trim()}"`);
+    console.log(`[gmailService] fetchGmailMessages: User query string provided for Gmail API: "${queryString.trim()}"`);
   } else {
     console.log('[gmailService] fetchGmailMessages: No user query string provided, fetching recent messages.');
   }
@@ -90,18 +90,19 @@ export async function fetchGmailMessages(
       },
     });
 
+    console.log(`[gmailService] fetchGmailMessages: Gmail API list messages call - Status: ${listResponse.status}`);
     if (!listResponse.ok) {
       const errorData = await listResponse.json().catch(() => ({ message: listResponse.statusText }));
-      console.error(`[gmailService] fetchGmailMessages: Gmail API error (list messages) - Status: ${listResponse.status}, Response:`, errorData);
+      console.error(`[gmailService] fetchGmailMessages: Gmail API error (list messages) - Status: ${listResponse.status}, Response:`, JSON.stringify(errorData));
       throw new Error(`Failed to list Gmail messages: ${errorData?.error?.message || listResponse.statusText}`);
     }
 
     const listResult = await listResponse.json();
     const numMessagesFound = listResult.messages ? listResult.messages.length : 0;
-    console.log(`[gmailService] fetchGmailMessages: Gmail API list call found ${numMessagesFound} message(s) initially.`);
+    console.log(`[gmailService] fetchGmailMessages: Gmail API list call returned ${numMessagesFound} message ID(s) initially.`);
     
     if (!listResult.messages || listResult.messages.length === 0) {
-      console.log('[gmailService] fetchGmailMessages: No messages returned by Gmail API list call for the query.');
+      console.log('[gmailService] fetchGmailMessages: No message IDs returned by Gmail API list call for the query. Returning empty array.');
       return [];
     }
 
@@ -110,10 +111,9 @@ export async function fetchGmailMessages(
 
     for (const messageInfo of listResult.messages.slice(0, maxResults)) {
       const messageId = messageInfo.id;
-      // Requesting metadata format gives us headers and snippet directly.
-      // Also explicitly requesting Date, From, Subject headers.
       const messageUrl = `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`;
       
+      console.log(`[gmailService] fetchGmailMessages: Fetching metadata for message ID ${messageId} from URL: ${messageUrl}`);
       const messageResponse = await fetch(messageUrl, {
         method: 'GET',
         headers: {
@@ -122,23 +122,30 @@ export async function fetchGmailMessages(
         },
       });
 
+      console.log(`[gmailService] fetchGmailMessages: Gmail API get message metadata call for ID ${messageId} - Status: ${messageResponse.status}`);
       if (!messageResponse.ok) {
         const errorData = await messageResponse.json().catch(() => ({ message: messageResponse.statusText }));
-        console.warn(`[gmailService] fetchGmailMessages: Failed to fetch details for message ID ${messageId} - Status: ${messageResponse.status}, Response:`, errorData);
-        continue; // Skip this email and try the next
+        console.warn(`[gmailService] fetchGmailMessages: Failed to fetch details for message ID ${messageId} - Status: ${messageResponse.status}, Response:`, JSON.stringify(errorData));
+        continue; 
       }
 
       const messageData: GmailMessage = await messageResponse.json();
       
-      fetchedEmails.push({
+      const emailEntry: FetchedEmailData = {
         id: messageData.id,
         sender: getHeaderValue(messageData.payload.headers, 'From'),
         subject: getHeaderValue(messageData.payload.headers, 'Subject'),
         snippet: messageData.snippet,
         timestamp: parseInt(messageData.internalDate, 10),
-      });
+      };
+      fetchedEmails.push(emailEntry);
+      console.log(`[gmailService] fetchGmailMessages: Successfully processed message ID ${messageId}. Subject: "${emailEntry.subject}"`);
     }
-    console.log(`[gmailService] fetchGmailMessages: Successfully fetched details for ${fetchedEmails.length} email(s). Returning (first 3 subjects if any):`, fetchedEmails.slice(0,3).map(e => ({id: e.id, subject: e.subject, sender: e.sender})));
+    console.log(`[gmailService] fetchGmailMessages: Successfully fetched and processed details for ${fetchedEmails.length} email(s).`);
+    if (fetchedEmails.length > 0) {
+        console.log('[gmailService] fetchGmailMessages: First fetched email data (sample):', JSON.stringify(fetchedEmails[0]));
+    }
+    console.log(`[gmailService] fetchGmailMessages: END. Returning ${fetchedEmails.length} emails.`);
     return fetchedEmails;
   } catch (error) {
     console.error('[gmailService] fetchGmailMessages: Error during processing:', error);
@@ -174,28 +181,25 @@ export async function fetchGmailMessageBody(accessToken: string, messageId: stri
     }
     const message: GmailMessage = await response.json();
 
-    // Complex logic to find the most appropriate body part
     let bodyContent = "";
     if (message.payload) {
       if (message.payload.mimeType === 'text/plain' && message.payload.body.data) {
         bodyContent = decodeBase64Url(message.payload.body.data);
       } else if (message.payload.mimeType === 'text/html' && message.payload.body.data) {
-        bodyContent = decodeBase64Url(message.payload.body.data); // Return HTML, EmailView will need to handle/sanitize
+        bodyContent = decodeBase64Url(message.payload.body.data); 
       } else if (message.payload.parts) {
-        // Prefer text/plain, then text/html from parts
         let textPart = message.payload.parts.find(part => part.mimeType === 'text/plain');
         if (textPart && textPart.body.data) {
           bodyContent = decodeBase64Url(textPart.body.data);
         } else {
           let htmlPart = message.payload.parts.find(part => part.mimeType === 'text/html');
           if (htmlPart && htmlPart.body.data) {
-            bodyContent = decodeBase64Url(htmlPart.body.data); // Return HTML
+            bodyContent = decodeBase64Url(htmlPart.body.data);
           } else {
-            // Look deeper for nested parts (e.g., multipart/alternative)
             const findBodyInParts = (parts: GmailMessagePart[]): string | null => {
               for (const part of parts) {
                 if (part.mimeType === 'text/plain' && part.body.data) return decodeBase64Url(part.body.data);
-                if (part.mimeType === 'text/html' && part.body.data) return decodeBase64Url(part.body.data); // Storing HTML
+                if (part.mimeType === 'text/html' && part.body.data) return decodeBase64Url(part.body.data); 
                 if (part.parts) {
                   const nestedBody = findBodyInParts(part.parts);
                   if (nestedBody) return nestedBody;
@@ -209,8 +213,8 @@ export async function fetchGmailMessageBody(accessToken: string, messageId: stri
         }
       }
     }
-    console.log(`[gmailService] fetchGmailMessageBody: Successfully decoded body for message ID ${messageId}. Length: ${bodyContent.length}`);
-    return bodyContent || message.snippet || "Email body could not be extracted."; // Fallback to snippet
+    console.log(`[gmailService] fetchGmailMessageBody: Successfully decoded body for message ID ${messageId}. Length: ${bodyContent.length}. Preview (first 100 chars): ${bodyContent.substring(0,100)}`);
+    return bodyContent || message.snippet || "Email body could not be extracted.";
   } catch (error) {
     console.error(`[gmailService] fetchGmailMessageBody: Error fetching/processing body for message ${messageId}:`, error);
     if (error instanceof Error) throw error;
