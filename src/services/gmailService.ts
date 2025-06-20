@@ -61,7 +61,7 @@ function decodeBase64Url(data: string): string {
 }
 
 // Helper to append to debug messages if the array is provided
-const appendToDebug = (debugMessages: string[] | undefined, message: string) => {
+const appendToDebugLocal = (debugMessages: string[] | undefined, message: string) => {
   if (debugMessages && Array.isArray(debugMessages)) {
     debugMessages.push(message);
   }
@@ -76,23 +76,23 @@ export async function fetchGmailMessages(
   debugMessages?: string[] // Optional array for debug logging
 ): Promise<FetchedEmailData[]> {
   
-  appendToDebug(debugMessages, `[gmailService] fetchGmailMessages: START. QueryString="${queryString}", MaxResults=${maxResults}, AccessToken (first 10): ${accessToken ? accessToken.substring(0,10) + '...' : 'MISSING'}`);
+  appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: START. QueryString="${queryString}", MaxResults=${maxResults}, AccessToken (first 10): ${accessToken ? accessToken.substring(0,10) + '...' : 'MISSING'}`);
 
   if (!accessToken) {
     const errMsg = '[gmailService] fetchGmailMessages ERROR: Access token is required.';
-    appendToDebug(debugMessages, errMsg);
-    console.error(errMsg); // Ensure this is logged as an error too
+    appendToDebugLocal(debugMessages, errMsg);
+    console.error(errMsg); 
     throw new Error('Access token is required to fetch Gmail messages.');
   }
 
   let apiUrl = `https://www.googleapis.com/gmail/v1/users/me/messages?maxResults=${maxResults}`;
   if (queryString && queryString.trim() !== "") {
     apiUrl += `&q=${encodeURIComponent(queryString.trim())}`;
-    appendToDebug(debugMessages, `[gmailService] fetchGmailMessages: User query string provided for Gmail API: "${queryString.trim()}"`);
+    appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: Using Gmail API query string: "${queryString.trim()}"`);
   } else {
-    appendToDebug(debugMessages, '[gmailService] fetchGmailMessages: No user query string provided, fetching recent messages.');
+    appendToDebugLocal(debugMessages, '[gmailService] fetchGmailMessages: No query string provided, fetching recent messages.');
   }
-  appendToDebug(debugMessages, `[gmailService] fetchGmailMessages: Constructed Gmail API URL: ${apiUrl}`);
+  appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: Constructed Gmail API URL: ${apiUrl}`);
 
   try {
     const listResponse = await fetch(apiUrl, {
@@ -103,32 +103,33 @@ export async function fetchGmailMessages(
       },
     });
 
-    appendToDebug(debugMessages, `[gmailService] fetchGmailMessages: Gmail API list messages call - Status: ${listResponse.status}`);
+    appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: Gmail API list messages call - Status: ${listResponse.status}`);
     if (!listResponse.ok) {
       const errorData = await listResponse.json().catch(() => ({ message: listResponse.statusText }));
       const errMsg = `[gmailService] fetchGmailMessages: Gmail API error (list messages) - Status: ${listResponse.status}, Response: ${JSON.stringify(errorData)}`;
-      appendToDebug(debugMessages, errMsg);
+      appendToDebugLocal(debugMessages, errMsg);
       console.error(errMsg);
       throw new Error(`Failed to list Gmail messages: ${errorData?.error?.message || listResponse.statusText}`);
     }
 
     const listResult = await listResponse.json();
     const numMessagesFound = listResult.messages ? listResult.messages.length : 0;
-    appendToDebug(debugMessages, `[gmailService] fetchGmailMessages: Gmail API list call returned ${numMessagesFound} message ID(s) initially.`);
+    appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: Gmail API list call returned ${numMessagesFound} message ID(s) initially.`);
     
     if (!listResult.messages || listResult.messages.length === 0) {
-      appendToDebug(debugMessages, '[gmailService] fetchGmailMessages: No message IDs returned by Gmail API list call for the query. Returning empty array.');
+      appendToDebugLocal(debugMessages, '[gmailService] fetchGmailMessages: No message IDs returned by Gmail API list call for the query. Returning empty array.');
       return [];
     }
 
     const fetchedEmails: FetchedEmailData[] = [];
-    appendToDebug(debugMessages, `[gmailService] fetchGmailMessages: Attempting to fetch details for ${Math.min(numMessagesFound, maxResults)} message ID(s)...`);
+    appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: Attempting to fetch details for ${Math.min(numMessagesFound, maxResults)} message ID(s)...`);
 
     for (const messageInfo of listResult.messages.slice(0, maxResults)) {
       const messageId = messageInfo.id;
+      // Fetch only essential metadata (Subject, From, Date) and the snippet
       const messageUrl = `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`;
       
-      appendToDebug(debugMessages, `[gmailService] fetchGmailMessages: Fetching metadata for message ID ${messageId}`);
+      appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: Fetching metadata for message ID ${messageId} using URL: ${messageUrl}`);
       const messageResponse = await fetch(messageUrl, {
         method: 'GET',
         headers: {
@@ -137,11 +138,11 @@ export async function fetchGmailMessages(
         },
       });
 
-      appendToDebug(debugMessages, `[gmailService] fetchGmailMessages: Gmail API get message metadata call for ID ${messageId} - Status: ${messageResponse.status}`);
+      appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: Gmail API get message metadata call for ID ${messageId} - Status: ${messageResponse.status}`);
       if (!messageResponse.ok) {
         const errorData = await messageResponse.json().catch(() => ({ message: messageResponse.statusText }));
         const warnMsg = `[gmailService] fetchGmailMessages WARNING: Failed to fetch details for message ID ${messageId} - Status: ${messageResponse.status}, Response: ${JSON.stringify(errorData)}`;
-        appendToDebug(debugMessages, warnMsg);
+        appendToDebugLocal(debugMessages, warnMsg);
         console.warn(warnMsg); 
         continue; 
       }
@@ -152,22 +153,22 @@ export async function fetchGmailMessages(
         id: messageData.id,
         sender: getHeaderValue(messageData.payload.headers, 'From'),
         subject: getHeaderValue(messageData.payload.headers, 'Subject'),
-        snippet: messageData.snippet,
+        snippet: messageData.snippet, // Use the snippet from metadata call
         timestamp: parseInt(messageData.internalDate, 10),
       };
       fetchedEmails.push(emailEntry);
-      appendToDebug(debugMessages, `[gmailService] fetchGmailMessages: Successfully processed message ID ${messageId}. Subject: "${emailEntry.subject}"`);
+      appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: Successfully processed message ID ${messageId}. Subject: "${emailEntry.subject}", Snippet length: ${emailEntry.snippet?.length}`);
     }
-    appendToDebug(debugMessages, `[gmailService] fetchGmailMessages: Successfully fetched and processed details for ${fetchedEmails.length} email(s).`);
+    appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: Successfully fetched and processed details for ${fetchedEmails.length} email(s).`);
     if (fetchedEmails.length > 0) {
-        appendToDebug(debugMessages, `[gmailService] fetchGmailMessages: First fetched email data (sample): ${JSON.stringify(fetchedEmails[0])}`);
+        appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: First fetched email data (sample): ${JSON.stringify(fetchedEmails[0])}`);
     }
-    appendToDebug(debugMessages, `[gmailService] fetchGmailMessages: END. Returning ${fetchedEmails.length} emails.`);
+    appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: END. Returning ${fetchedEmails.length} emails.`);
     return fetchedEmails;
   } catch (error) {
     const errMsg = `[gmailService] fetchGmailMessages CRITICAL_ERROR: Error during processing: ${error instanceof Error ? error.message : String(error)}`;
-    appendToDebug(debugMessages, errMsg);
-    console.error(errMsg, error); // Log the full error object too
+    appendToDebugLocal(debugMessages, errMsg);
+    console.error(errMsg, error);
     if (error instanceof Error) {
         throw new Error(`Could not fetch Gmail messages: ${error.message}`);
     }
@@ -182,15 +183,16 @@ export async function fetchGmailMessageBody(
   debugMessages?: string[] // Optional array for debug logging
 ): Promise<string> {
   
-  appendToDebug(debugMessages, `[gmailService] fetchGmailMessageBody: Fetching full body for message ID ${messageId}`);
+  appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Fetching full body for message ID ${messageId}`);
   
   if (!accessToken) {
     const errMsg = '[gmailService] fetchGmailMessageBody ERROR: Access token is required.';
-    appendToDebug(debugMessages, errMsg);
+    appendToDebugLocal(debugMessages, errMsg);
     console.error(errMsg);
     throw new Error('Access token is required to fetch Gmail message body.');
   }
   const messageUrl = `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`;
+  appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Constructed Gmail API URL: ${messageUrl}`);
   
   try {
     const response = await fetch(messageUrl, {
@@ -200,11 +202,12 @@ export async function fetchGmailMessageBody(
         'Content-Type': 'application/json',
       },
     });
+    appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Gmail API get message (full) call for ID ${messageId} - Status: ${response.status}`);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: response.statusText }));
       const errMsg = `[gmailService] fetchGmailMessageBody: Gmail API error (get message) - Status: ${response.status}, Response: ${JSON.stringify(errorData)}`;
-      appendToDebug(debugMessages, errMsg);
+      appendToDebugLocal(debugMessages, errMsg);
       console.error(errMsg);
       throw new Error(`Failed to fetch email body for ${messageId}: ${errorData?.error?.message || response.statusText}`);
     }
@@ -214,52 +217,56 @@ export async function fetchGmailMessageBody(
     if (message.payload) {
       if (message.payload.mimeType === 'text/plain' && message.payload.body.data) {
         bodyContent = decodeBase64Url(message.payload.body.data);
+        appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Decoded body from top-level text/plain part. Length: ${bodyContent.length}`);
       } else if (message.payload.mimeType === 'text/html' && message.payload.body.data) {
         bodyContent = decodeBase64Url(message.payload.body.data); 
+        appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Decoded body from top-level text/html part. Length: ${bodyContent.length}`);
       } else if (message.payload.parts) {
+        appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Top-level payload has parts. Iterating to find text/plain or text/html.`);
         const findBodyInParts = (parts: GmailMessagePart[]): string | null => {
           let plainText: string | null = null;
           let htmlText: string | null = null;
 
           for (const part of parts) {
+            appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Checking part with mimeType: ${part.mimeType}, partId: ${part.partId}`);
             if (part.mimeType === 'text/plain' && part.body.data) {
               plainText = decodeBase64Url(part.body.data);
-              // Prefer plain text, so break if found
-              // However, if debug needed for HTML part, remove break.
+              appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Found and decoded text/plain part. Length: ${plainText.length}. Prioritizing this.`);
               break; 
             }
-            if (part.mimeType === 'text/html' && part.body.data) {
+            if (part.mimeType === 'text/html' && part.body.data && !plainText) { // Only consider HTML if plain text not yet found
               htmlText = decodeBase64Url(part.body.data);
+              appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Found and decoded text/html part. Length: ${htmlText.length}.`);
             }
-            // Recursive call for nested parts
-            if (part.parts) {
+            if (part.parts && !plainText) { // Recurse if no plain text found yet
+              appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Part ${part.partId} has sub-parts. Recursing.`);
               const nestedBody = findBodyInParts(part.parts);
               if (nestedBody) { 
-                 // Prioritize plain text from deeper parts first if not already found
-                 if (part.mimeType === 'text/plain' && plainText === null) plainText = nestedBody;
-                 else if (part.mimeType === 'text/html' && htmlText === null) htmlText = nestedBody;
-                 // If neither plainText nor htmlText is found yet at this level,
-                 // take whatever nestedBody provided (could be plain or html)
-                 else if (plainText === null && htmlText === null) { 
-                    if(nestedBody) return nestedBody; 
-                 }
+                 if(!plainText) plainText = nestedBody; 
+                 else if (!htmlText && part.mimeType.includes('html')) htmlText = nestedBody; 
               }
             }
           }
-          return plainText || htmlText; // Prefer plain text, fallback to HTML
+          return plainText || htmlText; 
         };
         
         const foundBody = findBodyInParts(message.payload.parts);
         if (foundBody) {
           bodyContent = foundBody;
+        } else {
+            appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: No suitable text/plain or text/html body found in parts.`);
         }
+      } else {
+         appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Message payload did not have body.data or parts for standard extraction.`);
       }
+    } else {
+        appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: No payload found in the message object.`);
     }
-    appendToDebug(debugMessages, `[gmailService] fetchGmailMessageBody: Successfully decoded body for message ID ${messageId}. Length: ${bodyContent.length}. Preview (first 100 chars): ${bodyContent.substring(0,100)}`);
+    appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Successfully decoded body for message ID ${messageId}. Final Length: ${bodyContent.length}. Preview (first 100 chars): ${bodyContent.substring(0,100)}`);
     return bodyContent || message.snippet || "Email body could not be extracted.";
   } catch (error) {
     const errMsg = `[gmailService] fetchGmailMessageBody CRITICAL_ERROR: Error fetching/processing body for message ${messageId}: ${error instanceof Error ? error.message : String(error)}`;
-    appendToDebug(debugMessages, errMsg);
+    appendToDebugLocal(debugMessages, errMsg);
     console.error(errMsg, error);
     if (error instanceof Error) {
          throw error;
