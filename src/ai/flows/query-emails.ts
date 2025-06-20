@@ -31,30 +31,78 @@ const QueriedEmailAISummarySchema = z.object({
 const QueryEmailsOutputSchema = z.object({
   emailList: z
     .array(QueriedEmailAISummarySchema)
-    .describe('A list of real emails, selected and summarized by AI based on their snippets and the user query.'),
+    .describe('A list of real emails, selected and summarized by AI based on their snippets and the user query, or a diagnostic message if no emails are found/processed.'),
 });
 export type QueryEmailsOutput = z.infer<typeof QueryEmailsOutputSchema>;
 
 export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsOutput> {
+  let debugMessages: string[] = [];
+  const diagnosticTimestamp = Date.now();
+
+  debugMessages.push(`[queryEmailsFlow EXPORTED_FUNCTION_ENTRY] Timestamp: ${new Date(diagnosticTimestamp).toISOString()}`);
+  debugMessages.push(`User Query: "${input.query}"`);
+  debugMessages.push(`Access Token (first 10 chars): ${input.accessToken ? input.accessToken.substring(0,10) + '...' : 'MISSING_TOKEN'}`);
+
+  // Keep console logs in case they start working in Cloud Logging
   console.log(`[queryEmailsFlow EXPORTED_FUNCTION_ENTRY] Received input. User Query: "${input.query}", Access Token (first 10 chars): ${input.accessToken ? input.accessToken.substring(0,10) + '...' : 'MISSING'}`);
-  
+
   if (!input.accessToken) {
-    const errorMsg = `[queryEmailsFlow EXPORTED_FUNCTION_ERROR] Access token is missing in input. Query: "${input.query}". Cannot query emails.`;
+    const errorMsg = `[queryEmailsFlow EXPORTED_FUNCTION_ERROR] Access token is missing. Query: "${input.query}". Cannot query emails.`;
     console.error(errorMsg);
-    return { emailList: [] };
+    debugMessages.push(errorMsg);
+    return {
+      emailList: [{
+        id: 'diagnostic-no-access-token',
+        sender: 'MailSage System Alert',
+        subject: 'Server Error: Missing Access Token',
+        snippet: `Diagnostic Info:\n${debugMessages.join('\n')}`,
+        timestamp: diagnosticTimestamp,
+        summary: `Diagnostic Info:\n${debugMessages.join('\n')}`,
+      }],
+    };
   }
 
+  debugMessages.push(`[queryEmailsFlow GENKIT_FLOW_RUN_ATTEMPT] Attempting to call internal queryEmailsFlow.`);
   console.log(`[queryEmailsFlow GENKIT_FLOW_RUN_ATTEMPT] Attempting to call queryEmailsFlow with input. User Query: "${input.query}"`);
+
   try {
-    const result = await queryEmailsFlow(input);
+    const result = await queryEmailsFlow(input, debugMessages); // Pass debugMessages to be appended by the flow
+    debugMessages.push(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Genkit flow call completed. Returned ${result.emailList.length} email(s).`);
     console.log(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Successfully returning ${result.emailList.length} emails from Genkit flow. Query: "${input.query}"`);
+
+    if (result.emailList.length === 0) {
+      debugMessages.push("[queryEmailsFlow EXPORTED_FUNCTION_INFO] Genkit flow returned an empty email list. Adding diagnostic email.");
+      console.log("[queryEmailsFlow EXPORTED_FUNCTION_INFO] Genkit flow returned 0 emails. Preparing diagnostic response.");
+      result.emailList.push({
+        id: 'diagnostic-empty-result-from-flow',
+        sender: 'MailSage Server Debug',
+        subject: `No actual emails processed for query: "${input.query}"`,
+        snippet: `Server-Side Diagnostic Information:\n${debugMessages.join('\n')}`,
+        timestamp: diagnosticTimestamp,
+        summary: `Server-Side Diagnostic Information:\n${debugMessages.join('\n')}`,
+      });
+    }
     return result;
   } catch (error: any) {
-    console.error(`[queryEmailsFlow EXPORTED_FUNCTION_CRITICAL_ERROR] CRITICAL ERROR during queryEmailsFlow execution for query "${input.query}". Error: ${error.message}`, error);
+    const errorMsg = `[queryEmailsFlow EXPORTED_FUNCTION_CRITICAL_ERROR] CRITICAL ERROR during queryEmailsFlow execution for query "${input.query}".`;
+    console.error(errorMsg, error);
     if (error.stack) {
       console.error(`[queryEmailsFlow EXPORTED_FUNCTION_CRITICAL_ERROR] Stack trace: ${error.stack}`);
     }
-    return { emailList: [] }; 
+    debugMessages.push(errorMsg);
+    debugMessages.push(`Error Type: ${error.name}, Message: ${error.message}`);
+    if (error.stack) debugMessages.push(`Stack: ${error.stack}`);
+
+    return {
+      emailList: [{
+        id: 'diagnostic-critical-server-error',
+        sender: 'MailSage System Alert',
+        subject: 'Critical Server Error Occurred',
+        snippet: `Server-Side Diagnostic Information (Error):\n${debugMessages.join('\n')}`,
+        timestamp: diagnosticTimestamp,
+        summary: `Server-Side Diagnostic Information (Error):\n${debugMessages.join('\n')}`,
+      }],
+    };
   }
 }
 
@@ -62,7 +110,7 @@ const prompt = ai.definePrompt({
   name: 'queryEmailsPrompt',
   input: { schema: z.object({
     userQuery: z.string().describe("The user's original natural language query."),
-    fetchedGmailEmails: z.array(z.object({ 
+    fetchedGmailEmails: z.array(z.object({
       id: z.string(),
       sender: z.string(),
       subject: z.string(),
@@ -70,7 +118,7 @@ const prompt = ai.definePrompt({
       timestamp: z.number(),
     })).describe("A list of emails fetched from the user's Gmail based on their query.")
   })},
-  output: { schema: QueryEmailsOutputSchema }, 
+  output: { schema: QueryEmailsOutputSchema },
   prompt: `You are an AI assistant helping users to process emails fetched from their Gmail account.
 You have been provided with a list of emails retrieved from Gmail based on the user's search term.
 The user's original natural language query was: "{{userQuery}}"
@@ -103,51 +151,71 @@ List of emails provided from Gmail:
 `,
 });
 
+// Modified queryEmailsFlow to accept and append to debugMessages
 const queryEmailsFlow = ai.defineFlow(
   {
     name: 'queryEmailsFlow',
-    inputSchema: QueryEmailsInputSchema,
+    inputSchema: QueryEmailsInputSchema, // Input schema remains the same for the flow itself
     outputSchema: QueryEmailsOutputSchema,
   },
-  async (input: QueryEmailsInput) => {
-    console.log(`[queryEmailsFlow GENKIT_FLOW_RUN_STARTED] Flow execution started. User Query: "${input.query}"`);
+  async (input: QueryEmailsInput, debugMessages?: string[]): Promise<QueryEmailsOutput> => {
+    const appendDebug = (msg: string) => {
+      if (debugMessages) debugMessages.push(msg);
+      console.log(msg); // Keep console logs
+    };
+
+    appendDebug(`[queryEmailsFlow GENKIT_FLOW_RUN_STARTED] Flow execution started. User Query: "${input.query}"`);
     if (!input.accessToken) {
-      console.error("[queryEmailsFlow GENKIT_FLOW_ERROR] Access token is missing within Genkit flow. Cannot query emails from Gmail.");
+      const errorMsg = "[queryEmailsFlow GENKIT_FLOW_ERROR] Access token is missing within Genkit flow. Cannot query emails from Gmail.";
+      appendDebug(errorMsg);
+      console.error(errorMsg); // Use console.error for actual errors
+      // The calling function will handle creating a diagnostic email for this case.
+      // Throwing error here will be caught by the outer try-catch.
       throw new Error("Access token is missing in Genkit flow. Cannot query emails from Gmail.");
     }
 
-    console.log(`[queryEmailsFlow GENKIT_FLOW_GMAIL_CALL] Calling fetchGmailMessages with user query: "${input.query}"`);
+    appendDebug(`[queryEmailsFlow GENKIT_FLOW_GMAIL_CALL] Calling fetchGmailMessages with user query: "${input.query}"`);
     const actualEmailsData: FetchedEmailData[] = await fetchGmailMessages(input.accessToken, input.query, 20);
-    console.log(`[queryEmailsFlow GENKIT_FLOW_GMAIL_RESULT] fetchGmailMessages returned ${actualEmailsData.length} email(s).`);
-    
+    appendDebug(`[queryEmailsFlow GENKIT_FLOW_GMAIL_RESULT] fetchGmailMessages returned ${actualEmailsData.length} email(s).`);
+
     if (actualEmailsData.length > 0) {
+        appendDebug(`[queryEmailsFlow GENKIT_FLOW_GMAIL_DATA_SAMPLE] Data from fetchGmailMessages (first email if any): ${JSON.stringify(actualEmailsData[0])}`);
         console.log('[queryEmailsFlow GENKIT_FLOW_GMAIL_DATA_SAMPLE] Data from fetchGmailMessages (first 3 subjects if any):', JSON.stringify(actualEmailsData.slice(0,3).map(e => ({id: e.id, subject: e.subject, snippetLength: e.snippet?.length}))));
     } else {
+        appendDebug('[queryEmailsFlow GENKIT_FLOW_GMAIL_NO_EMAILS] fetchGmailMessages returned no emails. Returning empty list (from Genkit flow).');
         console.log('[queryEmailsFlow GENKIT_FLOW_GMAIL_NO_EMAILS] fetchGmailMessages returned no emails. Returning empty list to client directly (from Genkit flow).');
-        return { emailList: [] }; 
+        return { emailList: [] };
     }
-    
+
     const promptInput = {
       userQuery: input.query,
       fetchedGmailEmails: actualEmailsData,
     };
+    appendDebug(`[queryEmailsFlow GENKIT_FLOW_AI_PROMPT_CALL] Calling AI prompt with userQuery: "${input.query}" and ${actualEmailsData.length} fetched emails.`);
+    if (actualEmailsData.length > 0) {
+      appendDebug(`Prompt input (first email if any): ${JSON.stringify(promptInput.fetchedGmailEmails[0])}`);
+    }
     console.log(`[queryEmailsFlow GENKIT_FLOW_AI_PROMPT_CALL] Calling AI prompt with userQuery: "${input.query}" and ${actualEmailsData.length} fetched emails. Prompt input (first email if any): ${actualEmailsData.length > 0 ? JSON.stringify(promptInput.fetchedGmailEmails[0]) : 'N/A'}`);
-    
+
     const { output } = await prompt(promptInput);
 
     if (!output) {
-        console.error("[queryEmailsFlow GENKIT_FLOW_AI_NO_OUTPUT_ERROR] AI prompt did not return an output. Returning empty list to client.");
-        return { emailList: [] }; 
+        const errorMsg = "[queryEmailsFlow GENKIT_FLOW_AI_NO_OUTPUT_ERROR] AI prompt did not return an output. Returning empty list.";
+        appendDebug(errorMsg);
+        console.error(errorMsg);
+        return { emailList: [] };
     }
-    
-    console.log(`[queryEmailsFlow GENKIT_FLOW_AI_PROMPT_RESULT] AI prompt returned ${output.emailList.length} email(s) after processing.`);
+
+    appendDebug(`[queryEmailsFlow GENKIT_FLOW_AI_PROMPT_RESULT] AI prompt returned ${output.emailList.length} email(s) after processing.`);
     if (output.emailList.length > 0) {
+        appendDebug(`[queryEmailsFlow GENKIT_FLOW_AI_OUTPUT_SAMPLE] AI output (first email ID if any): ${output.emailList[0].id}, Subject: ${output.emailList[0].subject}`);
         console.log('[queryEmailsFlow GENKIT_FLOW_AI_OUTPUT_SAMPLE] AI output (first 3 subjects from AI if any):', JSON.stringify(output.emailList.slice(0,3).map(e => ({id: e.id, subject: e.subject, summaryLength: e.summary?.length}))));
     } else {
+        appendDebug('[queryEmailsFlow GENKIT_FLOW_AI_NO_EMAILS_POST_PROCESSING] AI prompt returned 0 emails.');
         console.log('[queryEmailsFlow GENKIT_FLOW_AI_NO_EMAILS_POST_PROCESSING] AI prompt returned 0 emails.');
     }
+    appendDebug(`[queryEmailsFlow GENKIT_FLOW_EXIT] Returning ${output.emailList.length} processed emails from Genkit flow.`);
     console.log(`[queryEmailsFlow GENKIT_FLOW_EXIT] Returning ${output.emailList.length} processed emails from Genkit flow.`);
     return output;
   }
 );
-
