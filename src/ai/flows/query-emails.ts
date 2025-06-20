@@ -73,14 +73,14 @@ export async function queryEmails(input: Omit<QueryEmailsInput, '_internalDebugM
     
     const finalDebugMessages = result.emailList.find(e => e.id.startsWith('diagnostic-'))
       ? result.emailList[0].summary 
-      : (input._internalDebugMessages || debugMessages).join('\n');
+      : (flowInputWithDebug._internalDebugMessages || debugMessages).join('\n');
 
 
-    (input._internalDebugMessages || debugMessages).push(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Genkit flow call completed. Returned ${result.emailList.length} email(s).`);
+    (flowInputWithDebug._internalDebugMessages || debugMessages).push(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Genkit flow call completed. Returned ${result.emailList.length} email(s).`);
     console.log(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Successfully returning ${result.emailList.length} emails from Genkit flow. Query: "${input.query}"`);
 
-    if (result.emailList.length === 0 && (input._internalDebugMessages || debugMessages).length > 0) {
-      (input._internalDebugMessages || debugMessages).push("[queryEmailsFlow EXPORTED_FUNCTION_INFO] Genkit flow returned an empty email list. Adding diagnostic email.");
+    if (result.emailList.length === 0 && (flowInputWithDebug._internalDebugMessages || debugMessages).length > 0) {
+      (flowInputWithDebug._internalDebugMessages || debugMessages).push("[queryEmailsFlow EXPORTED_FUNCTION_INFO] Genkit flow returned an empty email list. Adding diagnostic email.");
       console.log("[queryEmailsFlow EXPORTED_FUNCTION_INFO] Genkit flow returned 0 emails. Preparing diagnostic response based on THIS scope's debugMessages.");
       result.emailList.push({
         id: 'diagnostic-empty-result-from-flow',
@@ -92,7 +92,6 @@ export async function queryEmails(input: Omit<QueryEmailsInput, '_internalDebugM
       });
     } else if (result.emailList.length > 0 && result.emailList[0].id.startsWith('diagnostic-')) {
       console.log("[queryEmailsFlow EXPORTED_FUNCTION_INFO] Genkit flow returned a diagnostic email. Passing it through.");
-       // Ensure the snippet also contains the debug messages if it's a diagnostic email
        if (!result.emailList[0].snippet.includes("Server-Side Diagnostic Information")){
            result.emailList[0].snippet = `Server-Side Diagnostic Information:\n${finalDebugMessages}`;
        }
@@ -125,9 +124,10 @@ export async function queryEmails(input: Omit<QueryEmailsInput, '_internalDebugM
 
 const TransformQueryInputSchema = z.object({
   userQuery: z.string().describe("The user's original natural language query."),
+  currentDate: z.string().describe("The current date in YYYY-MM-DD format. For LLM's reference when interpreting relative dates like 'last week' or 'month of May' if year isn't specified."),
 });
 const TransformQueryOutputSchema = z.object({
-  gmailApiQuery: z.string().describe("A search query string formatted for the Gmail API. This should use Gmail search operators like from:, to:, subject:, after:YYYY/MM/DD, before:YYYY/MM/DD, has:attachment, AND, OR, NOT, parentheses for grouping. For date ranges like 'last week' or 'month of May', convert them to specific after: and before: dates. Assume current year if not specified. For 'month of May YYYY', use after:YYYY/04/30 and before:YYYY/06/01."),
+  gmailApiQuery: z.string().describe("A search query string formatted for the Gmail API. This should use Gmail search operators like from:, to:, subject:, after:YYYY/MM/DD, before:YYYY/MM/DD, has:attachment, AND, OR, NOT, parentheses for grouping. For date ranges like 'last week' or 'month of May', convert them to specific after: and before: dates. Use the provided 'currentDate' to determine the correct year if the user's query does not specify one (e.g., 'month of May' should refer to May of the year in 'currentDate'). For 'month of May YYYY', use after:YYYY/04/30 and before:YYYY/06/01."),
 });
 
 const RefineAndSummarizeInputSchema = z.object({
@@ -150,24 +150,24 @@ const transformQueryPrompt = ai.definePrompt({
   output: { schema: TransformQueryOutputSchema },
   prompt: `You are an expert at converting a user's natural language email search queries into optimized Gmail API search strings.
 The user's query is: "{{userQuery}}"
+The current date is: "{{currentDate}}" (use this to determine the year for relative date queries like "month of May" if no year is specified in the user's query).
 
 Your task is to generate a Gmail API search query string based on this.
 - Use Gmail search operators like from:, to:, subject:, after:YYYY/MM/DD, before:YYYY/MM/DD, has:attachment, boolean operators (AND, OR, NOT), and parentheses for grouping.
 - If the query implies a date range (e.g., "last week", "month of May", "in 2023"), convert it to specific 'after:' and 'before:' dates in YYYY/MM/DD format.
-  - For "month of [MonthName] [Year]", use 'after:[Year]/[PreviousMonthNumber]/[LastDayOfPreviousMonth]' and 'before:[Year]/[NextMonthNumberAsMM]/01'. For example, "month of May 2024" becomes "after:2024/04/30 before:2024/06/01". For "December 2023", it would be "after:2023/11/30 before:2024/01/01".
-  - For "last week", calculate relative to today.
-  - If only a month is mentioned (e.g., "in May"), assume the current year unless otherwise specified.
+  - For "month of [MonthName] [Year]", use 'after:[Year]/[PreviousMonthNumber]/[LastDayOfPreviousMonth]' and 'before:[Year]/[NextMonthNumberAsMM]/01'. For example, "month of May 2023" becomes "after:2023/04/30 before:2023/06/01".
+  - For "month of [MonthName]" (no year specified), use the year from "{{currentDate}}". For example, if "{{currentDate}}" is "2025-06-20" and user query is "month of May", this means "month of May 2025", so the query should be "after:2025/04/30 before:2025/06/01".
+  - For "last week", calculate relative to "{{currentDate}}".
 - Focus on extracting key entities (senders, recipients), subject keywords, and date constraints.
 - If the user query contains command words like "summarize", "find", "get", "show me", these words are instructions for YOU, not part of the search terms for Gmail. Remove them from the search query.
 - If the user query mentions terms related to financial transactions like "charges", "invoices", "receipts", "bills", or "payments", translate these into effective search keywords within the Gmail query. For example:
     - "Uber charges" could become "from:uber (invoice OR receipt OR charge OR payment OR e-receipt OR Uber) after:YYYY/MM/DD before:YYYY/MM/DD" if a date is implied. The terms in parentheses should search both subject and body for any of these financial keywords, AND the company name (e.g. "Uber") should also be included as a keyword.
     - "bills from Verizon" could become "from:Verizon (bill OR statement)".
-- Combine multiple criteria with AND by default if not specified by OR/NOT. For example, "emails from john about marketing last week" should become "from:john (marketing) after:YYYY/MM/DD before:YYYY/MM/DD".
+- Combine multiple criteria with AND by default if not specified by OR/NOT. For example, "emails from john about marketing last week" should become "from:john (marketing) after:YYYY/MM/DD before:YYYY/MM/DD" (ensure dates are calculated from "{{currentDate}}").
 
-Example Transformation:
+Example Transformation (assuming currentDate is "2025-06-20"):
 User Query: "Summarize month of May Uber charges"
-Ideal Gmail API Query: "from:uber (invoice OR receipt OR charge OR payment OR e-receipt OR Uber) after:2024/04/30 before:2024/06/01"
-(Assuming current year is 2024. Adjust year based on current date if not specified. Ensure the company name like 'Uber' is also included if it's a keyword.)
+Ideal Gmail API Query: "from:uber (invoice OR receipt OR charge OR payment OR e-receipt OR Uber) after:2025/04/30 before:2025/06/01"
 
 Return ONLY the Gmail API search query string. Do not add any explanation or conversational text.
 `,
@@ -196,7 +196,8 @@ Instructions:
 1. For each email provided, carefully examine its snippet.
 2. Determine if the snippet contains CONCRETE EVIDENCE of a financial transaction relevant to "{{originalUserQuery}}".
     - Look for specific keywords or patterns like: "invoice", "receipt", "e-receipt", "payment confirmation", "your order", "total amount: $", "charged to your card", "trip details", "bill", "statement", an itemized list with prices, specific dollar amounts related to a service or product.
-    - The presence of the company name (e.g., "Uber" if the query is about Uber) is important, but the snippet must also show signs of an actual transaction, not just a promotion.
+    - The presence of the company name (e.g., "Uber" if the query is about Uber) is important, but the snippet must also show signs of an actual transaction, not just a promotion for a future service or a general company update.
+    - For example, if "{{originalUserQuery}}" is about "Uber charges", a snippet like "Your Uber trip on May 5th was $12.50" is highly relevant. A snippet like "Save 20% on your next Uber ride!" is NOT relevant for this specific task, even if it's from Uber.
 3. If the snippet DOES contain such financial indicators directly related to "{{originalUserQuery}}":
     a. Consider this email relevant.
     b. Generate a concise summary that is FOCUSED STRICTLY ON THE FINANCIAL ASPECTS found in the snippet. Extract and highlight:
@@ -251,9 +252,20 @@ const queryEmailsFlow = ai.defineFlow(
       };
     }
 
+    // Step 0: Get current date for LLM query transformation
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0'); // JS months are 0-indexed
+    const day = now.getDate().toString().padStart(2, '0');
+    const currentDateForLLM = `${year}-${month}-${day}`;
+    appendDebug(`[queryEmailsFlow STEP_0_CURRENT_DATE] Current date for LLM: "${currentDateForLLM}"`);
+
     // Step 1: Transform user query to Gmail API query string
-    appendDebug(`[queryEmailsFlow STEP_1_TRANSFORM_QUERY_CALL] Calling transformQueryPrompt with user query: "${flowInput.query}"`);
-    const transformQueryInputForLLM: z.infer<typeof TransformQueryInputSchema> = { userQuery: flowInput.query };
+    appendDebug(`[queryEmailsFlow STEP_1_TRANSFORM_QUERY_CALL] Calling transformQueryPrompt with user query: "${flowInput.query}" and current date: "${currentDateForLLM}"`);
+    const transformQueryInputForLLM: z.infer<typeof TransformQueryInputSchema> = { 
+      userQuery: flowInput.query,
+      currentDate: currentDateForLLM,
+    };
     let gmailApiQueryString = '';
     try {
       const transformResult = await transformQueryPrompt(transformQueryInputForLLM);
@@ -330,3 +342,5 @@ const queryEmailsFlow = ai.defineFlow(
 );
 
       
+
+    
