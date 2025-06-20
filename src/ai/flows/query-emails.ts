@@ -43,7 +43,6 @@ export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsO
   debugMessages.push(`User Query: "${input.query}"`);
   debugMessages.push(`Access Token (first 10 chars): ${input.accessToken ? input.accessToken.substring(0,10) + '...' : 'MISSING_TOKEN'}`);
 
-  // Keep console logs in case they start working in Cloud Logging
   console.log(`[queryEmailsFlow EXPORTED_FUNCTION_ENTRY] Received input. User Query: "${input.query}", Access Token (first 10 chars): ${input.accessToken ? input.accessToken.substring(0,10) + '...' : 'MISSING'}`);
 
   if (!input.accessToken) {
@@ -66,7 +65,8 @@ export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsO
   console.log(`[queryEmailsFlow GENKIT_FLOW_RUN_ATTEMPT] Attempting to call queryEmailsFlow with input. User Query: "${input.query}"`);
 
   try {
-    const result = await queryEmailsFlow(input, debugMessages); // Pass debugMessages to be appended by the flow
+    // Pass the debugMessages array to the Genkit flow
+    const result = await queryEmailsFlow(input, debugMessages);
     debugMessages.push(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Genkit flow call completed. Returned ${result.emailList.length} email(s).`);
     console.log(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Successfully returning ${result.emailList.length} emails from Genkit flow. Query: "${input.query}"`);
 
@@ -151,26 +151,29 @@ List of emails provided from Gmail:
 `,
 });
 
-// Modified queryEmailsFlow to accept and append to debugMessages
+// Genkit flow definition
 const queryEmailsFlow = ai.defineFlow(
   {
     name: 'queryEmailsFlow',
-    inputSchema: QueryEmailsInputSchema, // Input schema remains the same for the flow itself
+    inputSchema: QueryEmailsInputSchema, // Input schema for the flow itself
     outputSchema: QueryEmailsOutputSchema,
   },
-  async (input: QueryEmailsInput, debugMessages?: string[]): Promise<QueryEmailsOutput> => {
+  // The second parameter `passedDebugMessages` will receive the `debugMessages` array from the exported `queryEmails` function
+  async (input: QueryEmailsInput, passedDebugMessages?: string[]): Promise<QueryEmailsOutput> => {
+    // Helper function to append messages to the passedDebugMessages array (if provided)
+    // and also log to console (for potential cloud logging visibility)
     const appendDebug = (msg: string) => {
-      if (debugMessages) debugMessages.push(msg);
-      console.log(msg); // Keep console logs
+      if (passedDebugMessages) { // Check if the array was actually passed
+        passedDebugMessages.push(msg);
+      }
+      console.log(msg); // Keep console logs for cloud logging
     };
 
     appendDebug(`[queryEmailsFlow GENKIT_FLOW_RUN_STARTED] Flow execution started. User Query: "${input.query}"`);
     if (!input.accessToken) {
       const errorMsg = "[queryEmailsFlow GENKIT_FLOW_ERROR] Access token is missing within Genkit flow. Cannot query emails from Gmail.";
       appendDebug(errorMsg);
-      console.error(errorMsg); // Use console.error for actual errors
-      // The calling function will handle creating a diagnostic email for this case.
-      // Throwing error here will be caught by the outer try-catch.
+      console.error(errorMsg);
       throw new Error("Access token is missing in Genkit flow. Cannot query emails from Gmail.");
     }
 
@@ -219,3 +222,4 @@ const queryEmailsFlow = ai.defineFlow(
     return output;
   }
 );
+
