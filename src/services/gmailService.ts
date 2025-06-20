@@ -72,10 +72,11 @@ const appendToDebugLocal = (debugMessages: string[] | undefined, message: string
 export async function fetchGmailMessages(
   accessToken: string,
   queryString?: string,
-  maxResults: number = 15,
-  debugMessages?: string[] // Optional array for debug logging
+  maxResults: number = 20,
+  debugMessages?: string[] // Optional array for debug logging, passed from the flow
 ): Promise<FetchedEmailData[]> {
   
+  // Use appendToDebugLocal which checks if debugMessages is an array
   appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessages: START. QueryString="${queryString}", MaxResults=${maxResults}, AccessToken (first 10): ${accessToken ? accessToken.substring(0,10) + '...' : 'MISSING'}`);
 
   if (!accessToken) {
@@ -109,7 +110,9 @@ export async function fetchGmailMessages(
       const errMsg = `[gmailService] fetchGmailMessages: Gmail API error (list messages) - Status: ${listResponse.status}, Response: ${JSON.stringify(errorData)}`;
       appendToDebugLocal(debugMessages, errMsg);
       console.error(errMsg);
-      throw new Error(`Failed to list Gmail messages: ${errorData?.error?.message || listResponse.statusText}`);
+      // Try to extract a more specific error message if available
+      const detailedErrorMsg = errorData?.error?.message || listResponse.statusText;
+      throw new Error(`Failed to list Gmail messages: ${detailedErrorMsg} (Query: "${queryString}")`);
     }
 
     const listResult = await listResponse.json();
@@ -242,12 +245,14 @@ export async function fetchGmailMessageBody(
               appendToDebugLocal(debugMessages, `[gmailService] fetchGmailMessageBody: Part ${part.partId} has sub-parts. Recursing.`);
               const nestedBody = findBodyInParts(part.parts);
               if (nestedBody) { 
-                 if(!plainText) plainText = nestedBody; 
+                 if(!plainText) plainText = nestedBody; // If plainText not found, use this
+                 // If plainText is already found, this nested body won't be used unless it was also plainText from deeper recursion.
+                 // If we are here, plainText is null. If nestedBody is HTML, htmlText will get it.
                  else if (!htmlText && part.mimeType.includes('html')) htmlText = nestedBody; 
               }
             }
           }
-          return plainText || htmlText; 
+          return plainText || htmlText; // Prioritize plain text
         };
         
         const foundBody = findBodyInParts(message.payload.parts);
@@ -274,3 +279,4 @@ export async function fetchGmailMessageBody(
     throw new Error('An unknown error occurred while fetching email body.');
   }
 }
+
