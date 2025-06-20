@@ -16,6 +16,8 @@ import { fetchGmailMessages, type FetchedEmailData } from '@/services/gmailServi
 const QueryEmailsInputSchema = z.object({
   query: z.string().describe('The natural language query to search emails. This will be used by Gmail API search and also by the AI for refining selection and summarizing.'),
   accessToken: z.string().describe('Google OAuth2 Access Token for Gmail API.'),
+  // Internal field for passing debug messages into the flow
+  _internalDebugMessages: z.array(z.string()).optional().describe('Internal: For passing debug messages through the flow. Not for LLM.'),
 });
 export type QueryEmailsInput = z.infer<typeof QueryEmailsInputSchema>;
 
@@ -35,7 +37,7 @@ const QueryEmailsOutputSchema = z.object({
 });
 export type QueryEmailsOutput = z.infer<typeof QueryEmailsOutputSchema>;
 
-export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsOutput> {
+export async function queryEmails(input: Omit<QueryEmailsInput, '_internalDebugMessages'>): Promise<QueryEmailsOutput> {
   let debugMessages: string[] = [];
   const diagnosticTimestamp = Date.now();
 
@@ -54,9 +56,9 @@ export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsO
         id: 'diagnostic-no-access-token',
         sender: 'MailSage System Alert',
         subject: 'Server Error: Missing Access Token',
-        snippet: `Diagnostic Info:\n${debugMessages.join('\n')}`,
+        snippet: `Server-Side Diagnostic Information:\n${debugMessages.join('\n')}`,
         timestamp: diagnosticTimestamp,
-        summary: `Diagnostic Info:\n${debugMessages.join('\n')}`,
+        summary: `Server-Side Diagnostic Information:\n${debugMessages.join('\n')}`,
       }],
     };
   }
@@ -65,8 +67,11 @@ export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsO
   console.log(`[queryEmailsFlow GENKIT_FLOW_RUN_ATTEMPT] Attempting to call queryEmailsFlow with input. User Query: "${input.query}"`);
 
   try {
-    // Pass the debugMessages array to the Genkit flow
-    const result = await queryEmailsFlow(input, debugMessages);
+    // Pass the debugMessages array as part of the input object
+    const flowInput: QueryEmailsInput = { ...input, _internalDebugMessages: debugMessages };
+    const result = await queryEmailsFlow(flowInput);
+    
+    // debugMessages array is mutated by reference within the flow via input._internalDebugMessages
     debugMessages.push(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Genkit flow call completed. Returned ${result.emailList.length} email(s).`);
     console.log(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Successfully returning ${result.emailList.length} emails from Genkit flow. Query: "${input.query}"`);
 
@@ -106,18 +111,21 @@ export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsO
   }
 }
 
+// Define the input schema for the prompt, excluding internal debug fields
+const PromptServiceInputSchema = z.object({
+  userQuery: z.string().describe("The user's original natural language query."),
+  fetchedGmailEmails: z.array(z.object({
+    id: z.string(),
+    sender: z.string(),
+    subject: z.string(),
+    snippet: z.string(),
+    timestamp: z.number(),
+  })).describe("A list of emails fetched from the user's Gmail based on their query.")
+});
+
 const prompt = ai.definePrompt({
   name: 'queryEmailsPrompt',
-  input: { schema: z.object({
-    userQuery: z.string().describe("The user's original natural language query."),
-    fetchedGmailEmails: z.array(z.object({
-      id: z.string(),
-      sender: z.string(),
-      subject: z.string(),
-      snippet: z.string(),
-      timestamp: z.number(),
-    })).describe("A list of emails fetched from the user's Gmail based on their query.")
-  })},
+  input: { schema: PromptServiceInputSchema }, // Use the cleaned schema for the prompt
   output: { schema: QueryEmailsOutputSchema },
   prompt: `You are an AI assistant helping users to process emails fetched from their Gmail account.
 You have been provided with a list of emails retrieved from Gmail based on the user's search term.
@@ -155,30 +163,32 @@ List of emails provided from Gmail:
 const queryEmailsFlow = ai.defineFlow(
   {
     name: 'queryEmailsFlow',
-    inputSchema: QueryEmailsInputSchema, // Input schema for the flow itself
+    inputSchema: QueryEmailsInputSchema, // Flow input includes _internalDebugMessages
     outputSchema: QueryEmailsOutputSchema,
   },
-  // The second parameter `passedDebugMessages` will receive the `debugMessages` array from the exported `queryEmails` function
-  async (input: QueryEmailsInput, passedDebugMessages?: string[]): Promise<QueryEmailsOutput> => {
-    // Helper function to append messages to the passedDebugMessages array (if provided)
-    // and also log to console (for potential cloud logging visibility)
+  async (flowInput: QueryEmailsInput): Promise<QueryEmailsOutput> => {
+    // Helper function to append messages to the _internalDebugMessages array from flowInput
     const appendDebug = (msg: string) => {
-      if (passedDebugMessages) { // Check if the array was actually passed
-        passedDebugMessages.push(msg);
+      if (flowInput._internalDebugMessages) { // Check if the array was actually passed and exists
+        flowInput._internalDebugMessages.push(msg);
       }
       console.log(msg); // Keep console logs for cloud logging
     };
 
-    appendDebug(`[queryEmailsFlow GENKIT_FLOW_RUN_STARTED] Flow execution started. User Query: "${input.query}"`);
-    if (!input.accessToken) {
+    appendDebug(`[queryEmailsFlow GENKIT_FLOW_RUN_STARTED] Flow execution started. User Query: "${flowInput.query}"`);
+    if (!flowInput.accessToken) {
       const errorMsg = "[queryEmailsFlow GENKIT_FLOW_ERROR] Access token is missing within Genkit flow. Cannot query emails from Gmail.";
       appendDebug(errorMsg);
       console.error(errorMsg);
-      throw new Error("Access token is missing in Genkit flow. Cannot query emails from Gmail.");
+      // This error should ideally be caught by the caller, but good to log.
+      // Returning an empty list might be better than throwing if the outer function handles diagnostics.
+      return { emailList: [] }; // Or throw new Error(...)
     }
 
-    appendDebug(`[queryEmailsFlow GENKIT_FLOW_GMAIL_CALL] Calling fetchGmailMessages with user query: "${input.query}"`);
-    const actualEmailsData: FetchedEmailData[] = await fetchGmailMessages(input.accessToken, input.query, 20);
+    appendDebug(`[queryEmailsFlow GENKIT_FLOW_GMAIL_CALL] Calling fetchGmailMessages with user query: "${flowInput.query}"`);
+    // Pass the _internalDebugMessages to fetchGmailMessages if it's adapted to accept it, or handle its logs separately.
+    // For now, fetchGmailMessages logs independently.
+    const actualEmailsData: FetchedEmailData[] = await fetchGmailMessages(flowInput.accessToken, flowInput.query, 20, flowInput._internalDebugMessages);
     appendDebug(`[queryEmailsFlow GENKIT_FLOW_GMAIL_RESULT] fetchGmailMessages returned ${actualEmailsData.length} email(s).`);
 
     if (actualEmailsData.length > 0) {
@@ -190,17 +200,19 @@ const queryEmailsFlow = ai.defineFlow(
         return { emailList: [] };
     }
 
-    const promptInput = {
-      userQuery: input.query,
+    // Prepare input for the prompt, ensuring _internalDebugMessages is not included
+    const promptServiceInput: z.infer<typeof PromptServiceInputSchema> = {
+      userQuery: flowInput.query,
       fetchedGmailEmails: actualEmailsData,
     };
-    appendDebug(`[queryEmailsFlow GENKIT_FLOW_AI_PROMPT_CALL] Calling AI prompt with userQuery: "${input.query}" and ${actualEmailsData.length} fetched emails.`);
-    if (actualEmailsData.length > 0) {
-      appendDebug(`Prompt input (first email if any): ${JSON.stringify(promptInput.fetchedGmailEmails[0])}`);
-    }
-    console.log(`[queryEmailsFlow GENKIT_FLOW_AI_PROMPT_CALL] Calling AI prompt with userQuery: "${input.query}" and ${actualEmailsData.length} fetched emails. Prompt input (first email if any): ${actualEmailsData.length > 0 ? JSON.stringify(promptInput.fetchedGmailEmails[0]) : 'N/A'}`);
 
-    const { output } = await prompt(promptInput);
+    appendDebug(`[queryEmailsFlow GENKIT_FLOW_AI_PROMPT_CALL] Calling AI prompt with userQuery: "${promptServiceInput.userQuery}" and ${promptServiceInput.fetchedGmailEmails.length} fetched emails.`);
+    if (promptServiceInput.fetchedGmailEmails.length > 0) {
+      appendDebug(`Prompt input (first email if any): ${JSON.stringify(promptServiceInput.fetchedGmailEmails[0])}`);
+    }
+    console.log(`[queryEmailsFlow GENKIT_FLOW_AI_PROMPT_CALL] Calling AI prompt with userQuery: "${promptServiceInput.userQuery}" and ${promptServiceInput.fetchedGmailEmails.length} fetched emails. Prompt input (first email if any): ${promptServiceInput.fetchedGmailEmails.length > 0 ? JSON.stringify(promptServiceInput.fetchedGmailEmails[0]) : 'N/A'}`);
+
+    const { output } = await prompt(promptServiceInput); // Call prompt with cleaned input
 
     if (!output) {
         const errorMsg = "[queryEmailsFlow GENKIT_FLOW_AI_NO_OUTPUT_ERROR] AI prompt did not return an output. Returning empty list.";
@@ -222,4 +234,3 @@ const queryEmailsFlow = ai.defineFlow(
     return output;
   }
 );
-
