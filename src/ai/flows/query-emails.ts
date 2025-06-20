@@ -73,13 +73,14 @@ export async function queryEmails(input: Omit<QueryEmailsInput, '_internalDebugM
     
     const finalDebugMessages = result.emailList.find(e => e.id.startsWith('diagnostic-'))
       ? result.emailList[0].summary 
-      : debugMessages.join('\n');
+      : (input._internalDebugMessages || debugMessages).join('\n');
 
-    debugMessages.push(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Genkit flow call completed. Returned ${result.emailList.length} email(s).`);
+
+    (input._internalDebugMessages || debugMessages).push(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Genkit flow call completed. Returned ${result.emailList.length} email(s).`);
     console.log(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Successfully returning ${result.emailList.length} emails from Genkit flow. Query: "${input.query}"`);
 
-    if (result.emailList.length === 0 && debugMessages.length > 0) {
-      debugMessages.push("[queryEmailsFlow EXPORTED_FUNCTION_INFO] Genkit flow returned an empty email list. Adding diagnostic email.");
+    if (result.emailList.length === 0 && (input._internalDebugMessages || debugMessages).length > 0) {
+      (input._internalDebugMessages || debugMessages).push("[queryEmailsFlow EXPORTED_FUNCTION_INFO] Genkit flow returned an empty email list. Adding diagnostic email.");
       console.log("[queryEmailsFlow EXPORTED_FUNCTION_INFO] Genkit flow returned 0 emails. Preparing diagnostic response based on THIS scope's debugMessages.");
       result.emailList.push({
         id: 'diagnostic-empty-result-from-flow',
@@ -91,6 +92,10 @@ export async function queryEmails(input: Omit<QueryEmailsInput, '_internalDebugM
       });
     } else if (result.emailList.length > 0 && result.emailList[0].id.startsWith('diagnostic-')) {
       console.log("[queryEmailsFlow EXPORTED_FUNCTION_INFO] Genkit flow returned a diagnostic email. Passing it through.");
+       // Ensure the snippet also contains the debug messages if it's a diagnostic email
+       if (!result.emailList[0].snippet.includes("Server-Side Diagnostic Information")){
+           result.emailList[0].snippet = `Server-Side Diagnostic Information:\n${finalDebugMessages}`;
+       }
     }
     return result;
   } catch (error: any) {
@@ -99,18 +104,18 @@ export async function queryEmails(input: Omit<QueryEmailsInput, '_internalDebugM
     if (error.stack) {
       console.error(`[queryEmailsFlow EXPORTED_FUNCTION_CRITICAL_ERROR] Stack trace: ${error.stack}`);
     }
-    debugMessages.push(errorMsg);
-    debugMessages.push(`Error Type: ${error.name}, Message: ${error.message}`);
-    if (error.stack) debugMessages.push(`Stack: ${error.stack}`);
+    (input._internalDebugMessages || debugMessages).push(errorMsg);
+    (input._internalDebugMessages || debugMessages).push(`Error Type: ${error.name}, Message: ${error.message}`);
+    if (error.stack) (input._internalDebugMessages || debugMessages).push(`Stack: ${error.stack}`);
 
     return {
       emailList: [{
         id: 'diagnostic-critical-server-error',
         sender: 'MailSage System Alert',
         subject: 'Critical Server Error Occurred',
-        snippet: `Server-Side Diagnostic Information (Error):\n${debugMessages.join('\n')}`,
+        snippet: `Server-Side Diagnostic Information (Error):\n${(input._internalDebugMessages || debugMessages).join('\n')}`,
         timestamp: diagnosticTimestamp,
-        summary: `Server-Side Diagnostic Information (Error):\n${debugMessages.join('\n')}`,
+        summary: `Server-Side Diagnostic Information (Error):\n${(input._internalDebugMessages || debugMessages).join('\n')}`,
       }],
     };
   }
@@ -149,12 +154,12 @@ The user's query is: "{{userQuery}}"
 Your task is to generate a Gmail API search query string based on this.
 - Use Gmail search operators like from:, to:, subject:, after:YYYY/MM/DD, before:YYYY/MM/DD, has:attachment, boolean operators (AND, OR, NOT), and parentheses for grouping.
 - If the query implies a date range (e.g., "last week", "month of May", "in 2023"), convert it to specific 'after:' and 'before:' dates in YYYY/MM/DD format.
-  - For "month of [MonthName] [Year]", use 'after:[Year]/[PreviousMonthNumber]/[LastDayOfPreviousMonth]' and 'before:[Year]/[MonthNumberAsMM]/[FirstDayOfNextMonthAsDD]'. For example, "month of May 2024" becomes "after:2024/04/30 before:2024/06/01". For "December 2023", it would be "after:2023/11/30 before:2024/01/01".
+  - For "month of [MonthName] [Year]", use 'after:[Year]/[PreviousMonthNumber]/[LastDayOfPreviousMonth]' and 'before:[Year]/[NextMonthNumberAsMM]/01'. For example, "month of May 2024" becomes "after:2024/04/30 before:2024/06/01". For "December 2023", it would be "after:2023/11/30 before:2024/01/01".
   - For "last week", calculate relative to today.
   - If only a month is mentioned (e.g., "in May"), assume the current year unless otherwise specified.
 - Focus on extracting key entities (senders, recipients), subject keywords, and date constraints.
 - If the user query contains command words like "summarize", "find", "get", "show me", these words are instructions for YOU, not part of the search terms for Gmail. Remove them from the search query.
-- If the user query mentions terms related to financial transactions like "charges", "invoices", "receipts", "bills", or "payments", translate these into effective search keywords. For example:
+- If the user query mentions terms related to financial transactions like "charges", "invoices", "receipts", "bills", or "payments", translate these into effective search keywords within the Gmail query. For example:
     - "Uber charges" could become "from:uber (invoice OR receipt OR charge OR payment OR e-receipt OR Uber) after:YYYY/MM/DD before:YYYY/MM/DD" if a date is implied. The terms in parentheses should search both subject and body for any of these financial keywords, AND the company name (e.g. "Uber") should also be included as a keyword.
     - "bills from Verizon" could become "from:Verizon (bill OR statement)".
 - Combine multiple criteria with AND by default if not specified by OR/NOT. For example, "emails from john about marketing last week" should become "from:john (marketing) after:YYYY/MM/DD before:YYYY/MM/DD".
@@ -172,32 +177,10 @@ const refineAndSummarizeEmailsPrompt = ai.definePrompt({
   name: 'refineAndSummarizeEmailsPrompt',
   input: { schema: RefineAndSummarizeInputSchema }, 
   output: { schema: QueryEmailsOutputSchema },
-  prompt: `You are an AI assistant helping users process emails fetched from their Gmail account.
+  prompt: `You are an AI assistant helping users process emails.
 The user's original natural language query was: "{{originalUserQuery}}"
-You have been provided with a list of emails retrieved from Gmail. The Gmail search query used to fetch these emails likely already incorporated keywords related to financial transactions (like "invoice", "receipt", "charge", "payment") if "{{originalUserQuery}}" implied this.
+A previous step already used an optimized Gmail API query (likely including terms like "invoice", "receipt", "charge", "payment" if "{{originalUserQuery}}" implied a financial transaction) to fetch the following emails from the user's Gmail:
 
-Your tasks are:
-1. Review the provided list of emails (ID, sender, subject, date, snippet).
-2. For each email, carefully examine its snippet for ANY indication of financial relevance to "{{originalUserQuery}}".
-    - Look for keywords such as "invoice", "receipt", "e-receipt", "payment", "charge", "bill", "statement", "order confirmed", "your trip", "total", currency symbols (e.g., $), specific amounts, due dates, or service/product names if they relate to a transaction.
-3. If the snippet contains ANY such financial indicators:
-    a. Consider this email relevant.
-    b. Generate a concise, structured summary FOCUSED ON THE FINANCIAL ASPECTS. Extract and highlight key financial information:
-        - Names of people or organizations involved in the transaction.
-        - Monetary amounts (total amount, sub-totals, discounts).
-        - Specific dates (transaction date, due date, service date).
-        - Key items, services, or products mentioned.
-        - Payment method details if visible (e.g., last four digits of a card).
-        - Any explicit action items or questions related to the transaction.
-    c. Present this financial summary in an easy-to-scan format. Use bullet points if appropriate.
-    d. The summary should be distinct from the original snippet, adding analytical value specific to the financial query.
-4. If an email's snippet is purely promotional, an update, or informational WITHOUT ANY discernible financial transaction details relevant to "{{originalUserQuery}}", then DO NOT include it in your output. For example, if the query is about "Uber charges" and an email is just an ad for a new Uber service with no mention of a past or current charge, exclude it.
-5. If no emails from the list are deemed financially relevant after your analysis, return an empty list.
-6. If all emails have relevant financial information in their snippets, summarize all of them.
-
-Return a list of these processed emails. Each item in your list should include the original 'id', 'sender', 'subject', 'snippet', 'timestamp', and your newly generated 'summary' focused on financial details.
-
-List of emails provided from Gmail:
 {{#each fetchedGmailEmails}}
 - Email ID: {{id}}
   From: {{sender}}
@@ -206,6 +189,29 @@ List of emails provided from Gmail:
   Snippet: {{{snippet}}}
 ---
 {{/each}}
+
+Your specific task now is to re-evaluate EACH of these fetched emails based on their SNIPPET and the user's ORIGINAL query ("{{originalUserQuery}}").
+
+Instructions:
+1. For each email provided, carefully examine its snippet.
+2. Determine if the snippet contains CONCRETE EVIDENCE of a financial transaction relevant to "{{originalUserQuery}}".
+    - Look for specific keywords or patterns like: "invoice", "receipt", "e-receipt", "payment confirmation", "your order", "total amount: $", "charged to your card", "trip details", "bill", "statement", an itemized list with prices, specific dollar amounts related to a service or product.
+    - The presence of the company name (e.g., "Uber" if the query is about Uber) is important, but the snippet must also show signs of an actual transaction, not just a promotion.
+3. If the snippet DOES contain such financial indicators directly related to "{{originalUserQuery}}":
+    a. Consider this email relevant.
+    b. Generate a concise summary that is FOCUSED STRICTLY ON THE FINANCIAL ASPECTS found in the snippet. Extract and highlight:
+        - Service/Product (e.g., "Uber Ride", "Monthly Subscription").
+        - Amount (e.g., "$15.75", "Total: €20.00").
+        - Transaction Date/Time (if available in snippet, otherwise infer from email date).
+        - Payment method (e.g., "Visa ****1234", if visible).
+        - Any reference numbers (e.g., "Order #", "Invoice ID", if visible).
+    c. The summary should be factual and directly derived from the snippet's financial information. Do NOT invent details.
+4. If the snippet, despite the email being fetched, does NOT contain clear, concrete financial transaction details relevant to "{{originalUserQuery}}" (e.g., it's purely an advertisement, a general newsletter, a service update without specific charge details, or a survey):
+    a. Exclude this email from your output. Do not summarize it.
+5. Your goal is to return a list of emails where the snippet provides actual financial transaction data pertinent to the user's query.
+6. If after this careful review, NO emails from the list have snippets containing relevant financial transaction details, return an empty list.
+
+Return a list of these processed emails. Each item in your list must include the original 'id', 'sender', 'subject', 'snippet', 'timestamp', and your newly generated financial 'summary'.
 `,
 });
 
@@ -217,12 +223,12 @@ const queryEmailsFlow = ai.defineFlow(
     outputSchema: QueryEmailsOutputSchema,
   },
   async (flowInput: QueryEmailsInput): Promise<QueryEmailsOutput> => {
-    const debugMessages = flowInput._internalDebugMessages || []; 
+    const passedDebugMessages = flowInput._internalDebugMessages || []; 
     const diagnosticTimestamp = Date.now();
     
     const appendDebug = (msg: string) => {
-      if (debugMessages && Array.isArray(debugMessages)) {
-        debugMessages.push(msg);
+      if (passedDebugMessages && Array.isArray(passedDebugMessages)) {
+        passedDebugMessages.push(msg);
       }
       console.log(msg); 
     };
@@ -238,9 +244,9 @@ const queryEmailsFlow = ai.defineFlow(
           id: 'diagnostic-flow-no-token',
           sender: 'MailSage Flow Alert',
           subject: 'Flow Error: Missing Access Token',
-          snippet: `Server-Side Flow Diagnostic:\n${debugMessages.join('\n')}`,
+          snippet: `Server-Side Flow Diagnostic:\n${passedDebugMessages.join('\n')}`,
           timestamp: diagnosticTimestamp,
-          summary: `Server-Side Flow Diagnostic:\n${debugMessages.join('\n')}`,
+          summary: `Server-Side Flow Diagnostic:\n${passedDebugMessages.join('\n')}`,
         }],
       };
     }
@@ -271,7 +277,7 @@ const queryEmailsFlow = ai.defineFlow(
 
     // Step 2: Fetch emails from Gmail using the transformed query
     appendDebug(`[queryEmailsFlow STEP_2_GMAIL_CALL] Calling fetchGmailMessages with AI-generated query: "${gmailApiQueryString}"`);
-    const actualEmailsData: FetchedEmailData[] = await fetchGmailMessages(flowInput.accessToken, gmailApiQueryString, 20, debugMessages);
+    const actualEmailsData: FetchedEmailData[] = await fetchGmailMessages(flowInput.accessToken, gmailApiQueryString, 20, passedDebugMessages);
     appendDebug(`[queryEmailsFlow STEP_2_GMAIL_RESULT] fetchGmailMessages returned ${actualEmailsData.length} email(s) using AI-generated query.`);
 
     if (actualEmailsData.length === 0) {
@@ -322,3 +328,5 @@ const queryEmailsFlow = ai.defineFlow(
     return summarizeResultOutput; 
   }
 );
+
+      
