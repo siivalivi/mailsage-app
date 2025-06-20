@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -5,7 +6,7 @@ import type { Email } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { summarizeEmail, SummarizeEmailInput } from '@/ai/flows/summarize-email';
-import { Loader2, FileText, MessageSquareText, CalendarDays, UserCircle, Sparkles } from 'lucide-react'; // Replaced ZapIcon with Sparkles
+import { Loader2, FileText, MessageSquareText, CalendarDays, UserCircle, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface EmailViewProps {
@@ -91,9 +92,14 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap break-words text-foreground/90">
-              {email.body || <p className="text-muted-foreground">Email content not available.</p>}
-            </div>
+            {email.body ? (
+              <div 
+                className="prose prose-sm max-w-none dark:prose-invert text-foreground/90"
+                dangerouslySetInnerHTML={{ __html: email.body }}
+              />
+            ) : (
+              <p className="text-muted-foreground">Email content not available.</p>
+            )}
           </CardContent>
         </Card>
 
@@ -108,14 +114,14 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
                 {isSummarizing ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : (
-                  <Sparkles className="h-4 w-4 mr-2" /> // Using Sparkles icon
+                  <Sparkles className="h-4 w-4 mr-2" />
                 )}
                 {email.summary && email.summary !== "No summary available." ? 'Re-Summarize' : 'Summarize'}
               </Button>
             </div>
           </CardHeader>
           <CardContent>
-            {isSummarizing && !email.summary && ( // Show loading only if no summary exists yet
+            {isSummarizing && !email.summary && (
               <div className="flex items-center justify-center h-20">
                 <Loader2 className="h-8 w-8 animate-spin text-accent" />
                 <p className="ml-2 text-muted-foreground">Generating summary...</p>
@@ -137,5 +143,3 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
     </div>
   );
 }
-
-// Removed ZapIcon as it's replaced by lucide-react's Sparkles
