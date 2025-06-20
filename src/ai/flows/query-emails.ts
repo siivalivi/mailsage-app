@@ -163,6 +163,7 @@ Your task is to generate a Gmail API search query string based on this.
 - If the user query mentions terms related to financial transactions like "charges", "invoices", "receipts", "bills", or "payments", translate these into effective search keywords within the Gmail query. For example:
     - "Uber charges" could become "from:uber (invoice OR receipt OR charge OR payment OR e-receipt OR Uber) after:YYYY/MM/DD before:YYYY/MM/DD" if a date is implied. The terms in parentheses should search both subject and body for any of these financial keywords, AND the company name (e.g. "Uber") should also be included as a keyword.
     - "bills from Verizon" could become "from:Verizon (bill OR statement)".
+    - For a query like "LinkedIn bills for 2025", the query should be specific to LinkedIn and include terms like "bill", "invoice", "statement", "receipt", or "payment" and ensure the date range covers the entirety of 2025 (e.g., "after:2024/12/31 before:2026/01/01").
 - Combine multiple criteria with AND by default if not specified by OR/NOT. For example, "emails from john about marketing last week" should become "from:john (marketing) after:YYYY/MM/DD before:YYYY/MM/DD" (ensure dates are calculated from "{{currentDate}}").
 
 Example Transformation (assuming currentDate is "2025-06-20"):
@@ -179,7 +180,7 @@ const refineAndSummarizeEmailsPrompt = ai.definePrompt({
   output: { schema: QueryEmailsOutputSchema },
   prompt: `You are an AI assistant helping users process emails.
 The user's original natural language query was: "{{originalUserQuery}}"
-A previous step already used an optimized Gmail API query (likely including terms like "invoice", "receipt", "charge", "payment" if "{{originalUserQuery}}" implied a financial transaction) to fetch the following emails from the user's Gmail:
+A previous step already used an optimized Gmail API query (likely including terms like "invoice", "receipt", "charge", "payment" if "{{originalUserQuery}}" implied a financial transaction from a specific company like Uber or LinkedIn) to fetch the following emails from the user's Gmail:
 
 {{#each fetchedGmailEmails}}
 - Email ID: {{id}}
@@ -194,22 +195,23 @@ Your specific task now is to re-evaluate EACH of these fetched emails based on t
 
 Instructions:
 1. For each email provided, carefully examine its snippet.
-2. Determine if the snippet contains CONCRETE EVIDENCE of a financial transaction relevant to "{{originalUserQuery}}".
-    - Look for specific keywords or patterns like: "invoice", "receipt", "e-receipt", "payment confirmation", "your order", "total amount: $", "charged to your card", "trip details", "bill", "statement", an itemized list with prices, specific dollar amounts related to a service or product.
-    - The presence of the company name (e.g., "Uber" if the query is about Uber) is important, but the snippet must also show signs of an actual transaction, not just a promotion for a future service or a general company update.
-    - For example, if "{{originalUserQuery}}" is about "Uber charges", a snippet like "Your Uber trip on May 5th was $12.50" is highly relevant. A snippet like "Save 20% on your next Uber ride!" is NOT relevant for this specific task, even if it's from Uber.
+2. Determine if the snippet contains CONCRETE EVIDENCE of a financial transaction relevant to "{{originalUserQuery}}". For example, if "{{originalUserQuery}}" is about "LinkedIn bills", you are looking for evidence of a bill or payment for a LinkedIn service.
+    - Look for specific keywords or patterns within the snippet like: "invoice", "receipt", "e-receipt", "payment confirmation", "your order", "total amount: $", "amount due", "charged to your card", "subscription renewal", "service fee", "bill", "statement", an itemized list with prices, specific dollar amounts related to a service or product offered by the company mentioned in "{{originalUserQuery}}".
+    - The presence of the company name (e.g., "LinkedIn" if the query is about LinkedIn) in the sender or subject is a given, as these emails were fetched based on that. Your focus is on whether the *snippet itself* contains evidence of a financial transaction for that company's services.
+    - For example, if "{{originalUserQuery}}" is about "Uber charges", a snippet like "Your Uber trip on May 5th was $12.50. Total: $12.50" is highly relevant. A snippet like "Save 20% on your next Uber ride!" or "Uber news update" is NOT relevant for this specific task, even if it's from Uber.
+    - Similarly, if "{{originalUserQuery}}" is about "LinkedIn bills", a snippet confirming "Your LinkedIn Premium subscription of $29.99 has been processed" or "Invoice LNK-123 from LinkedIn. Amount due: $50.00" is relevant. A snippet from a LinkedIn newsletter about industry news or a general group update, even if it mentions financial topics in a news context, is NOT relevant unless it details a direct bill/charge *to the user* for a LinkedIn service.
 3. If the snippet DOES contain such financial indicators directly related to "{{originalUserQuery}}":
     a. Consider this email relevant.
     b. Generate a concise summary that is FOCUSED STRICTLY ON THE FINANCIAL ASPECTS found in the snippet. Extract and highlight:
-        - Service/Product (e.g., "Uber Ride", "Monthly Subscription").
+        - Service/Product (e.g., "Uber Ride", "LinkedIn Premium Monthly Subscription", "LinkedIn Ad Campaign").
         - Amount (e.g., "$15.75", "Total: €20.00").
         - Transaction Date/Time (if available in snippet, otherwise infer from email date).
         - Payment method (e.g., "Visa ****1234", if visible).
-        - Any reference numbers (e.g., "Order #", "Invoice ID", if visible).
+        - Any reference numbers (e.g., "Order #", "Invoice ID", "Billing ID", if visible).
     c. The summary should be factual and directly derived from the snippet's financial information. Do NOT invent details.
-4. If the snippet, despite the email being fetched, does NOT contain clear, concrete financial transaction details relevant to "{{originalUserQuery}}" (e.g., it's purely an advertisement, a general newsletter, a service update without specific charge details, or a survey):
+4. If the snippet, despite the email being fetched by a financial-intent query, does NOT contain clear, concrete financial transaction details *for the specific service/company in "{{originalUserQuery}}"* (e.g., it's a general newsletter, a marketing email from the company, or a news article shared by the company that happens to use financial terms in a general sense):
     a. Exclude this email from your output. Do not summarize it.
-5. Your goal is to return a list of emails where the snippet provides actual financial transaction data pertinent to the user's query.
+5. Your goal is to return a list of emails where the snippet provides actual financial transaction data pertinent to the user's query for the specified company/service.
 6. If after this careful review, NO emails from the list have snippets containing relevant financial transaction details, return an empty list.
 
 Return a list of these processed emails. Each item in your list must include the original 'id', 'sender', 'subject', 'snippet', 'timestamp', and your newly generated financial 'summary'.
@@ -301,6 +303,7 @@ const queryEmailsFlow = ai.defineFlow(
     }
 
     // Step 3: Refine selection and summarize email snippets
+    // Prepare input for refineAndSummarize, ensuring _internalDebugMessages is not passed to this LLM prompt
     const refineAndSummarizeInputForLLM: z.infer<typeof RefineAndSummarizeInputSchema> = {
       originalUserQuery: flowInput.query,
       fetchedGmailEmails: actualEmailsData,
@@ -340,7 +343,3 @@ const queryEmailsFlow = ai.defineFlow(
     return summarizeResultOutput; 
   }
 );
-
-      
-
-    
