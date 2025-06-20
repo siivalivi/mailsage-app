@@ -3,173 +3,159 @@
 
 This document outlines the architecture of the MailSage application, a Next.js app using Genkit for AI-powered Gmail interaction.
 
-## I. Frontend (Client-Side - Next.js with React & ShadCN UI)
+## System Architecture Diagram
 
-```
-User Browser
-│
-├─── 1. UI Components (src/app, src/components)
-│    │
-│    ├─── HomePage (`/`)
-│    │    └── SignInButton -> invokes AuthContext.signInWithGoogle()
-│    │
-│    ├─── DashboardPage (`/dashboard`)
-│    │    ├─── QueryForm
-│    │    │    └── User inputs natural language query (e.g., "LinkedIn bills 2025")
-│    │    │        │
-│    │    │        └───[Client Action Call]───> 2. queryEmails (Server Action)
-│    │    │                                       (passes query & access token)
-│    │    │                                                │
-│    │    │        <───[Returns List<QueriedEmail>]────────┘
-│    │    │                 │
-│    │    │                 └─── Adapts to List<Email> for display
-│    │    │                 │
-│    │    │                 └───[Client Action Call]───> 3. summarizeQueriedEmails (Server Action)
-│    │    │                                               (passes adapted summaries)
-│    │    │                                                        │
-│    │    │                 <───[Returns OverallSummary]────────────┘
-│    │    │
-│    │    ├─── EmailList / EmailListItem
-│    │    │    └── Displays queried emails. Clicking an item:
-│    │    │        └── Navigates to EmailPage (stores email data in localStorage)
-│    │    │
-│    │    └── Overall Summary Card
-│    │         └── Displays the overall summary from summarizeQueriedEmails.
-│    │
-│    ├─── EmailPage (`/dashboard/email/[id]`)
-│    │    ├─── Reads email data (potentially including full body) from localStorage or EmailView fetches it.
-│    │    ├─── EmailView
-│    │    │    └── Displays email subject, sender, date.
-│    │    │    └── "Original Email" section:
-│    │    │        └── Renders HTML email body using `dangerouslySetInnerHTML`.
-│    │    │    └── "AI Summary" section:
-│    │    │        └── Displays existing summary or:
-│    │    │        └── Button ("Summarize") ───[Client Action Call]───> 4. summarizeEmail (Server Action)
-│    │    │                                                              (passes full email body)
-│    │    │                                                                      │
-│    │    │            <───[Returns new Email.summary]───────────────────────────┘
-│    │
-│    └─── AuthContext (`src/contexts/AuthContext.tsx`)
-│         ├─── Manages user state (currentUser, loading).
-│         ├─── Handles Google Sign-In via Firebase Auth.
-│         └─── Obtains and stores Google OAuth Access Token (with `gmail.readonly` scope) in sessionStorage.
-│
-├─── Firebase SDK (`src/lib/firebase.ts`)
-     └── Interfaces with Firebase Authentication.
-```
+The following diagram illustrates the main components of the MailSage application and their interactions.
 
-## II. Backend (Server-Side - Next.js Server Actions & Genkit)
+```mermaid
+graph LR
+    %% Style for cleaner lines if supported by renderer (may not be universal)
+    %% linkStyle default interpolate basis
 
-```
-Next.js Server Environment
-│
-├─── Genkit Initialization (`src/ai/genkit.ts`)
-│    └── Configures Genkit with Google AI plugin (Gemini models).
-│
-├─── 2. queryEmails Server Action (`src/ai/flows/query-emails.ts`)
-│    │   Input: { userQuery: string, accessToken: string, _internalDebugMessages: string[] }
-│    │
-│    ├─── a. Get Current Date
-│    │      └── For accurate relative date interpretation by LLM.
-│    │
-│    ├─── b. LLM Call 1: Transform Query (`transformQueryPrompt`)
-│    │    │   Input: { userQuery, currentDate }
-│    │    │   Model: Gemini
-│    │    │   Task: Convert natural language (e.g., "LinkedIn bills 2025")
-│    │    │         into a Gmail API search string (e.g., "from:linkedin (bill OR invoice) after:2024/12/31 before:2026/01/01").
-│    │    │   Output: { gmailApiQuery: string }
-│    │
-│    ├─── c. Call Gmail Service (`gmailService.fetchGmailMessages`)
-│    │    │   Input: { accessToken, gmailApiQuery (from step b), maxResults, debugMessages }
-│    │    │   └───> Makes API call to III. Gmail API (messages.list)
-│    │    │   <─── Returns List of {id, sender, subject, snippet, timestamp}
-│    │
-│    ├─── d. LLM Call 2: Refine & Summarize Snippets (`refineAndSummarizeEmailsPrompt`)
-│    │    │   Input: { originalUserQuery, fetchedGmailEmails (from step c) }
-│    │    │   Model: Gemini
-│    │    │   Task: Evaluate each fetched email's snippet against the original user query's intent (e.g., financial relevance for "bills").
-│    │    │         Filter out irrelevant emails.
-│    │    │         Generate a concise, focused summary for each relevant email's snippet.
-│    │    │   Output: { emailList: List<QueriedEmail> } (QueriedEmail includes id, sender, subject, snippet, timestamp, AI summary)
-│    │
-│    └─── Returns `emailList` to client.
-│
-├─── 3. summarizeQueriedEmails Server Action (`src/ai/flows/summarize-queried-emails-flow.ts`)
-│    │   Input: { queriedEmails: List<{sender, subject, summary (from queryEmails output)}> }
-│    │
-│    ├─── a. LLM Call (`summarizeQueriedEmailsPrompt`)
-│    │    │   Model: Gemini
-│    │    │   Task: Synthesize an overall "executive summary" from the list of individual email summaries.
-│    │    │   Output: { overallSummary: string }
-│    │
-│    └─── Returns `overallSummary` to client.
-│
-├─── 4. summarizeEmail Server Action (`src/ai/flows/summarize-email.ts`)
-│    │   Input: { emailContent: string (full HTML body of one email) }
-│    │
-│    ├─── a. LLM Call (`summarizeEmailPrompt`)
-│    │    │   Model: Gemini
-│    │    │   Task: Generate a concise summary of the provided email content.
-│    │    │   Output: { summary: string }
-│    │
-│    └─── Returns `summary` to client.
-│
-├─── Gmail Service (`src/services/gmailService.ts`)
-     │
-     ├─── fetchGmailMessages(accessToken, queryString, maxResults, debugMessages)
-     │    └───> Calls III. Gmail API (messages.list with `q=queryString`)
-     │    └───> For each message ID, calls III. Gmail API (messages.get with `format=metadata`)
-     │    <─── Returns List of {id, sender, subject, snippet, timestamp}
-     │
-     └─── fetchGmailMessageBody(accessToken, messageId, debugMessages)
-          └───> Calls III. Gmail API (messages.get with `format=full`)
-          <─── Returns HTML string of email body.
-```
+    subgraph "User Interface (Next.js Frontend)"
+        direction TB
 
-## III. External Services & APIs
+        User(["User"])
 
-```
-┌─────────────────────────┐      ┌──────────────────────────┐      ┌─────────────────────────┐
-│ Firebase Authentication │<---->│ User's Google Account    │<---->│ Google OAuth 2.0        │
-└─────────────────────────┘      └──────────────────────────┘      └─────────────────────────┘
-          ∧                                                                │ (Grants Access Token
-          │ (Handles Sign-In)                                              │  for Gmail API)
-          │                                                                ∨
-Frontend App (AuthContext)───────────────────────────────────────────> III. Gmail API
-                                                                           │  (api.google.com/gmail/v1)
-                                                                           │  ├─ messages.list
-                                                                           │  └─ messages.get
-Backend (Genkit Flows, gmailService)───────────────────────────────────────┘
-          ∧
-          │ (Genkit calls)
-          ∨
-┌─────────────────────────┐
-│ Google AI Platform      │
-│ (Gemini Models via Genkit)│
-└─────────────────────────┘
+        subgraph "Pages & Context"
+            HomePage["/ (HomePage)"]
+            DashboardPage["/dashboard (DashboardPage)"]
+            EmailPage["/dashboard/email/[id] (EmailPage)"]
+            AuthContext["AuthContext (src/contexts/AuthContext.tsx)"]
+        end
+
+        subgraph "UI Components (src/components)"
+            SignInButton["SignInButton"]
+            QueryForm["QueryForm"]
+            EmailList["EmailList/EmailListItem"]
+            EmailView["EmailView"]
+            OverallSummaryDisplay["Overall Summary Card"]
+        end
+
+        User -- "Interacts" --> HomePage
+        User -- "Interacts" --> DashboardPage
+        User -- "Interacts" --> EmailPage
+
+        HomePage --> SignInButton
+        SignInButton -- "Triggers Google Sign-In" --> AuthContext
+
+        DashboardPage --> QueryForm
+        DashboardPage --> EmailList
+        DashboardPage --> OverallSummaryDisplay
+
+        EmailList -- "Selects Email & Navigates" --> EmailPage
+        EmailPage --> EmailView
+
+        %% Client-to-Server Action Calls
+        QueryForm -- "Submits Query (1)" --> SA_queryEmails["queryEmails (Server Action)"]
+        DashboardPage -- "Requests Overall Summary (3)" --> SA_summarizeQueriedEmails["summarizeQueriedEmails (Server Action)"]
+        EmailView -- "Requests Full Email Summary (4)" --> SA_summarizeEmail["summarizeEmail (Server Action)"]
+        EmailPage -- "Fetches Full Body (if needed via Client Call)" --> S_GmailService_ClientCall["gmailService.fetchGmailMessageBody (Client-side call if token available)"]
+    end
+
+    subgraph "Application Backend (Next.js Server Actions & Genkit)"
+        direction TB
+
+        SA_queryEmails["queryEmails (src/ai/flows/query-emails.ts)"]
+        SA_summarizeQueriedEmails["summarizeQueriedEmails (src/ai/flows/summarize-queried-emails-flow.ts)"]
+        SA_summarizeEmail["summarizeEmail (src/ai/flows/summarize-email.ts)"]
+
+        GenkitInit["Genkit Initialization (src/ai/genkit.ts)"]
+
+        SA_queryEmails -- "Input: {userQuery, accessToken}" --> F_queryEmails["Flow: queryEmails"]
+        SA_summarizeQueriedEmails -- "Input: {queriedEmails}" --> F_summarizeQueriedEmails["Flow: summarizeQueriedEmails"]
+        SA_summarizeEmail -- "Input: {emailContent}" --> F_summarizeEmail["Flow: summarizeEmail"]
+
+        subgraph "Genkit Flows (Defined in Server Actions)"
+            F_queryEmails
+            F_summarizeQueriedEmails
+            F_summarizeEmail
+        end
+
+        F_queryEmails -- "Uses" --> GenkitInit
+        F_queryEmails -- "a. Get Current Date" --> F_queryEmails
+        F_queryEmails -- "b. Calls LLM 1 (Transform Query)" --> M_Gemini["Gemini Model"]
+        F_queryEmails -- "c. Calls (via accessToken)" --> S_GmailService_ServerCall["gmailService (Server-side)"]
+        F_queryEmails -- "d. Calls LLM 2 (Refine/Summarize Snippets)" --> M_Gemini
+        F_queryEmails -- "Output: List<QueriedEmail>" --> DashboardPage
+
+        F_summarizeQueriedEmails -- "Uses" --> GenkitInit
+        F_summarizeQueriedEmails -- "a. Calls LLM" --> M_Gemini
+        F_summarizeQueriedEmails -- "Output: {overallSummary}" --> OverallSummaryDisplay
+
+        F_summarizeEmail -- "Uses" --> GenkitInit
+        F_summarizeEmail -- "a. Calls LLM" --> M_Gemini
+        F_summarizeEmail -- "Output: {summary}" --> EmailView
+
+        subgraph "Services (src/services)"
+            S_GmailService_ClientCall
+            S_GmailService_ServerCall["gmailService.ts (Server-side usage)"]
+        end
+    end
+
+    subgraph "External Services & APIs"
+        direction RL
+
+        AuthContext -- "Google Sign-In" --> FirebaseAuth["Firebase Authentication"]
+        FirebaseAuth <--> GoogleAccount["User's Google Account"]
+        GoogleAccount <--> GoogleOAuth["Google OAuth 2.0 (gmail.readonly scope)"]
+        GoogleOAuth -- "Provides Access Token" --> AuthContext
+        AuthContext -- "Access Token" --> SA_queryEmails
+        AuthContext -- "Access Token" --> S_GmailService_ClientCall
+
+
+        S_GmailService_ServerCall -- "fetchGmailMessages()" --> GmailAPI["Gmail API (api.google.com/gmail/v1)"]
+        S_GmailService_ClientCall -- "fetchGmailMessageBody()" --> GmailAPI
+
+        M_Gemini -- "Interacts via Genkit" --> GoogleAI["Google AI Platform (Gemini)"]
+        GenkitInit -- "Configures Google AI Plugin" --> GoogleAI
+    end
+
+    %% Styling (optional, makes it look a bit better in some renderers)
+    classDef page fill:#e6e6fa,stroke:#333,stroke-width:2px;        %% Light purple for pages
+    classDef component fill:#add8e6,stroke:#333,stroke-width:2px;   %% Light blue for UI components
+    classDef serverAction fill:#90ee90,stroke:#333,stroke-width:2px;%% Light green for server actions
+    classDef genkitFlow fill:#fffacd,stroke:#333,stroke-width:2px;  %% Lemon chiffon for Genkit flows
+    classDef service fill:#f08080,stroke:#333,stroke-width:2px;     %% Light coral for services
+    classDef external fill:#d3d3d3,stroke:#333,stroke-width:2px;    %% Light grey for external services
+
+    class HomePage,DashboardPage,EmailPage page;
+    class SignInButton,QueryForm,EmailList,EmailView,OverallSummaryDisplay,AuthContext component;
+    class SA_queryEmails,SA_summarizeQueriedEmails,SA_summarizeEmail serverAction;
+    class F_queryEmails,F_summarizeQueriedEmails,F_summarizeEmail genkitFlow;
+    class S_GmailService_ClientCall,S_GmailService_ServerCall,GenkitInit service;
+    class FirebaseAuth,GoogleAccount,GoogleOAuth,GmailAPI,GoogleAI,M_Gemini external;
 ```
 
 ## Data Flow Summary for a Typical Query:
 
-1.  **User signs in:** `AuthContext` -> Firebase Auth -> Google OAuth -> `accessToken` stored.
-2.  **User types query on Dashboard:** `QueryForm` -> `queryEmails` (Server Action).
-3.  **`queryEmails` Action:**
-    *   (LLM 1) Transforms query to Gmail API string.
-    *   `gmailService` calls Gmail API, gets message list & metadata/snippets.
-    *   (LLM 2) Refines list & summarizes snippets.
-    *   Returns list of `QueriedEmail` objects to `DashboardPage`.
+1.  **User signs in:** `AuthContext` -> Firebase Auth -> Google OAuth -> `accessToken` for Gmail API stored in `AuthContext` (sessionStorage).
+2.  **User types query on Dashboard:** `QueryForm` -> `queryEmails` (Server Action), passing the natural language query and the `accessToken`.
+3.  **`queryEmails` Server Action / Genkit Flow:**
+    *   Gets the current date.
+    *   (LLM 1 - `transformQueryPrompt`) Transforms the user's natural language query into a Gmail API search string (e.g., "from:linkedin (bill OR invoice) after:2024/12/31 before:2026/01/01").
+    *   `gmailService.fetchGmailMessages` is called with the `accessToken` and the AI-generated Gmail API query. This service function calls the Gmail API (`messages.list` with `q=queryString`) to get message IDs, then for each ID calls `messages.get` with `format=metadata` to retrieve sender, subject, snippet, and timestamp.
+    *   (LLM 2 - `refineAndSummarizeEmailsPrompt`) Evaluates each fetched email's snippet against the original user query's intent. It filters out irrelevant emails and generates a concise, focused summary for each relevant email's snippet.
+    *   Returns a list of `QueriedEmail` objects (each including id, sender, subject, original snippet, timestamp, and AI-generated summary) to the `DashboardPage`.
 4.  **`DashboardPage`:**
-    *   Displays email list.
-    *   Calls `summarizeQueriedEmails` (Server Action) with summaries.
-5.  **`summarizeQueriedEmails` Action:**
-    *   (LLM 3) Generates overall summary.
-    *   Returns overall summary to `DashboardPage`.
-6.  **User clicks an email:** Navigates to `EmailPage`.
+    *   Adapts the `List<QueriedEmail>` to `List<Email>` for display in `EmailList`.
+    *   Calls `summarizeQueriedEmails` (Server Action) with the list of summaries from the `QueriedEmail` objects.
+5.  **`summarizeQueriedEmails` Server Action / Genkit Flow:**
+    *   (LLM 3 - `summarizeQueriedEmailsPrompt`) Takes the list of individual AI-generated summaries (from the snippets) and synthesizes an overall "executive summary."
+    *   Returns the `overallSummary` string to the `DashboardPage` for display in the "Overall Summary Card".
+6.  **User clicks an email in `EmailList`:**
+    *   The `EmailListItem` stores the clicked `Email` object in `localStorage`.
+    *   Navigates to `EmailPage (/dashboard/email/[id])`.
 7.  **`EmailPage` / `EmailView`:**
-    *   Displays email. `fetchGmailMessageBody` might be called if full body isn't cached.
-    *   User clicks "Summarize" -> `summarizeEmail` (Server Action).
-8.  **`summarizeEmail` Action:**
-    *   (LLM 4) Summarizes full email body.
-    *   Returns summary to `EmailView`.
+    *   Loads the `Email` data from `localStorage`.
+    *   If the `email.body` is just the snippet (and not full HTML), `EmailPage` calls `fetchGmailMessageBody` (a client-side callable function in `gmailService.ts` that uses the `accessToken` from `AuthContext`) to get the full HTML body of the email from the Gmail API (`messages.get` with `format=full`).
+    *   `EmailView` displays the email subject, sender, date.
+    *   "Original Email" section renders the HTML email body using `dangerouslySetInnerHTML`.
+    *   "AI Summary" section displays the existing summary (which was based on the snippet).
+    *   User can click a "Summarize" or "Re-Summarize" button, which calls `summarizeEmail` (Server Action).
+8.  **`summarizeEmail` Server Action / Genkit Flow:**
+    *   (LLM 4 - `summarizeEmailPrompt`) Takes the full email body content.
+    *   Generates a concise summary of the full email content.
+    *   Returns the new `summary` to `EmailView`, which updates its display.
 
-This provides a good overview of the system's structure and how data moves through it.
+This Mermaid diagram should provide a good visual overview when rendered. You can paste the content of the `ARCHITECTURE.md` file into a Mermaid-compatible renderer (like the [Mermaid Live Editor](https://mermaid.live) or a VS Code extension) to see it.
