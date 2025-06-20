@@ -28,7 +28,7 @@ const QueriedEmailAISummarySchema = z.object({
   subject: z.string().describe('The subject of the email.'),
   snippet: z.string().describe('The original snippet of the email from Gmail.'),
   timestamp: z.number().describe('The timestamp (Unix epoch ms) of the email.'),
-  summary: z.string().describe('A structured and informative AI-generated summary of the email snippet, tailored to the user query.'),
+  summary: z.string().describe('A structured and informative AI-generated summary of the email snippet, tailored to the user query, focusing on financial details if relevant.'),
 });
 
 const QueryEmailsOutputSchema = z.object({
@@ -71,10 +71,8 @@ export async function queryEmails(input: Omit<QueryEmailsInput, '_internalDebugM
     const flowInputWithDebug: QueryEmailsInput = { ...input, _internalDebugMessages: debugMessages };
     const result = await queryEmailsFlow(flowInputWithDebug);
     
-    // The debug messages are now part of result if it was a diagnostic email.
-    // If actual emails are returned, 'debugMessages' from THIS scope is used for the diagnostic if it's still empty.
     const finalDebugMessages = result.emailList.find(e => e.id.startsWith('diagnostic-'))
-      ? result.emailList[0].summary // Or snippet, where we put it
+      ? result.emailList[0].summary 
       : debugMessages.join('\n');
 
     debugMessages.push(`[queryEmailsFlow EXPORTED_FUNCTION_SUCCESS] Genkit flow call completed. Returned ${result.emailList.length} email(s).`);
@@ -87,13 +85,11 @@ export async function queryEmails(input: Omit<QueryEmailsInput, '_internalDebugM
         id: 'diagnostic-empty-result-from-flow',
         sender: 'MailSage Server Debug',
         subject: `No actual emails processed for query: "${input.query}"`,
-        snippet: `Server-Side Diagnostic Information:\n${debugMessages.join('\n')}`, // Use debugMessages from this scope
+        snippet: `Server-Side Diagnostic Information:\n${finalDebugMessages}`, 
         timestamp: diagnosticTimestamp,
-        summary: `Server-Side Diagnostic Information:\n${debugMessages.join('\n')}`, // Use debugMessages from this scope
+        summary: `Server-Side Diagnostic Information:\n${finalDebugMessages}`, 
       });
     } else if (result.emailList.length > 0 && result.emailList[0].id.startsWith('diagnostic-')) {
-      // If the flow itself returned a diagnostic (e.g. critical error within flow), make sure it's the one shown.
-      // No need to do anything special here, result.emailList already contains it.
       console.log("[queryEmailsFlow EXPORTED_FUNCTION_INFO] Genkit flow returned a diagnostic email. Passing it through.");
     }
     return result;
@@ -122,7 +118,6 @@ export async function queryEmails(input: Omit<QueryEmailsInput, '_internalDebugM
 
 // --- Schemas for LLM Prompts ---
 
-// Schema for the first LLM call (transforming user query to Gmail API query)
 const TransformQueryInputSchema = z.object({
   userQuery: z.string().describe("The user's original natural language query."),
 });
@@ -130,7 +125,6 @@ const TransformQueryOutputSchema = z.object({
   gmailApiQuery: z.string().describe("A search query string formatted for the Gmail API. This should use Gmail search operators like from:, to:, subject:, after:YYYY/MM/DD, before:YYYY/MM/DD, has:attachment, AND, OR, NOT, parentheses for grouping. For date ranges like 'last week' or 'month of May', convert them to specific after: and before: dates. Assume current year if not specified. For 'month of May YYYY', use after:YYYY/04/30 and before:YYYY/06/01."),
 });
 
-// Schema for the second LLM call (refining selection and summarizing snippets)
 const RefineAndSummarizeInputSchema = z.object({
   originalUserQuery: z.string().describe("The user's original natural language query."),
   fetchedGmailEmails: z.array(z.object({
@@ -139,13 +133,12 @@ const RefineAndSummarizeInputSchema = z.object({
     subject: z.string(),
     snippet: z.string(),
     timestamp: z.number(),
-  })).describe("A list of emails fetched from the user's Gmail based on an AI-generated Gmail API query string.")
+  })).describe("A list of emails fetched from the user's Gmail based on an AI-generated Gmail API query string (which likely included terms like 'invoice', 'receipt', 'charge', 'payment' if the original query was about financial transactions).")
 });
 
 
 // --- LLM Prompts ---
 
-// Prompt 1: Transform user's natural language query to a Gmail API search string
 const transformQueryPrompt = ai.definePrompt({
   name: 'transformQueryToGmailPrompt',
   input: { schema: TransformQueryInputSchema },
@@ -162,7 +155,7 @@ Your task is to generate a Gmail API search query string based on this.
 - Focus on extracting key entities (senders, recipients), subject keywords, and date constraints.
 - If the user query contains command words like "summarize", "find", "get", "show me", these words are instructions for YOU, not part of the search terms for Gmail. Remove them from the search query.
 - If the user query mentions terms related to financial transactions like "charges", "invoices", "receipts", "bills", or "payments", translate these into effective search keywords. For example:
-    - "Uber charges" could become "subject:(invoice OR receipt OR charge OR payment OR e-receipt) OR (invoice OR receipt OR charge OR payment OR e-receipt)" to search both subject and body for any of these terms.
+    - "Uber charges" could become "from:uber (invoice OR receipt OR charge OR payment OR e-receipt OR Uber) after:YYYY/MM/DD before:YYYY/MM/DD" if a date is implied. The terms in parentheses should search both subject and body for any of these financial keywords, AND the company name (e.g. "Uber") should also be included as a keyword.
     - "bills from Verizon" could become "from:Verizon (bill OR statement)".
 - Combine multiple criteria with AND by default if not specified by OR/NOT. For example, "emails from john about marketing last week" should become "from:john (marketing) after:YYYY/MM/DD before:YYYY/MM/DD".
 
@@ -175,31 +168,34 @@ Return ONLY the Gmail API search query string. Do not add any explanation or con
 `,
 });
 
-
-// Prompt 2: Refine selection from fetched emails and summarize snippets
 const refineAndSummarizeEmailsPrompt = ai.definePrompt({
   name: 'refineAndSummarizeEmailsPrompt',
   input: { schema: RefineAndSummarizeInputSchema }, 
-  output: { schema: QueryEmailsOutputSchema }, // Output is the final list of summarized emails
-  prompt: `You are an AI assistant helping users to process emails fetched from their Gmail account.
-You have been provided with a list of emails retrieved from Gmail based on an AI-generated search term.
+  output: { schema: QueryEmailsOutputSchema },
+  prompt: `You are an AI assistant helping users process emails fetched from their Gmail account.
 The user's original natural language query was: "{{originalUserQuery}}"
+You have been provided with a list of emails retrieved from Gmail. The Gmail search query used to fetch these emails likely already incorporated keywords related to financial transactions (like "invoice", "receipt", "charge", "payment") if "{{originalUserQuery}}" implied this.
 
 Your tasks are:
 1. Review the provided list of emails (ID, sender, subject, date, snippet).
-2. Even though an AI generated the search query for Gmail, further refine the selection if needed based on the user's specific original query details "{{originalUserQuery}}". For example, if the user asked for "emails from John about marketing last week" and some emails from John about other topics were fetched, you should focus on the marketing ones.
-3. For each email you deem relevant to "{{originalUserQuery}}", generate a concise, structured summary based on its snippet. This summary should:
-    - Extract and highlight key information such as names of people or organizations, monetary amounts, specific dates or deadlines, and locations if present in the snippet.
-    - Clearly list any explicit action items or questions directed at the recipient if discernible from the snippet.
-    - If the snippet suggests a bill, receipt, or financial statement, make sure to summarize the total amount, key items or services, and payment due dates if mentioned. Include details like the last four digits of a payment method if it's part of a financial confirmation visible in the snippet.
-    - Present information in an easy-to-scan format. Use bullet points for lists, action items, or breakdowns where appropriate.
-    - Aim for a balance between brevity and completeness of critical information from the snippet.
-    - The summary should be distinct from the original snippet, adding analytical value.
-4. If an email from the provided list does not seem relevant to the user's specific original query "{{originalUserQuery}}", DO NOT include it in your output.
-5. If no emails from the list are relevant after your analysis, return an empty list.
-6. If all emails are relevant, summarize all of them.
+2. For each email, carefully examine its snippet for ANY indication of financial relevance to "{{originalUserQuery}}".
+    - Look for keywords such as "invoice", "receipt", "e-receipt", "payment", "charge", "bill", "statement", "order confirmed", "your trip", "total", currency symbols (e.g., $), specific amounts, due dates, or service/product names if they relate to a transaction.
+3. If the snippet contains ANY such financial indicators:
+    a. Consider this email relevant.
+    b. Generate a concise, structured summary FOCUSED ON THE FINANCIAL ASPECTS. Extract and highlight key financial information:
+        - Names of people or organizations involved in the transaction.
+        - Monetary amounts (total amount, sub-totals, discounts).
+        - Specific dates (transaction date, due date, service date).
+        - Key items, services, or products mentioned.
+        - Payment method details if visible (e.g., last four digits of a card).
+        - Any explicit action items or questions related to the transaction.
+    c. Present this financial summary in an easy-to-scan format. Use bullet points if appropriate.
+    d. The summary should be distinct from the original snippet, adding analytical value specific to the financial query.
+4. If an email's snippet is purely promotional, an update, or informational WITHOUT ANY discernible financial transaction details relevant to "{{originalUserQuery}}", then DO NOT include it in your output. For example, if the query is about "Uber charges" and an email is just an ad for a new Uber service with no mention of a past or current charge, exclude it.
+5. If no emails from the list are deemed financially relevant after your analysis, return an empty list.
+6. If all emails have relevant financial information in their snippets, summarize all of them.
 
-Return a list of these processed emails. Each item in your list should include the original 'id', 'sender', 'subject', 'snippet', 'timestamp', and your newly generated 'summary'.
+Return a list of these processed emails. Each item in your list should include the original 'id', 'sender', 'subject', 'snippet', 'timestamp', and your newly generated 'summary' focused on financial details.
 
 List of emails provided from Gmail:
 {{#each fetchedGmailEmails}}
@@ -217,11 +213,10 @@ List of emails provided from Gmail:
 const queryEmailsFlow = ai.defineFlow(
   {
     name: 'queryEmailsFlow',
-    inputSchema: QueryEmailsInputSchema, // Input now includes _internalDebugMessages
+    inputSchema: QueryEmailsInputSchema, 
     outputSchema: QueryEmailsOutputSchema,
   },
   async (flowInput: QueryEmailsInput): Promise<QueryEmailsOutput> => {
-    // Access the debugMessages array from the flowInput object
     const debugMessages = flowInput._internalDebugMessages || []; 
     const diagnosticTimestamp = Date.now();
     
@@ -229,7 +224,7 @@ const queryEmailsFlow = ai.defineFlow(
       if (debugMessages && Array.isArray(debugMessages)) {
         debugMessages.push(msg);
       }
-      console.log(msg); // Keep console logs for cloud logging
+      console.log(msg); 
     };
 
     appendDebug(`[queryEmailsFlow GENKIT_FLOW_RUN_STARTED] Flow execution started. User Query: "${flowInput.query}"`);
@@ -238,7 +233,6 @@ const queryEmailsFlow = ai.defineFlow(
       const errorMsg = "[queryEmailsFlow GENKIT_FLOW_ERROR] Access token is missing within Genkit flow. Cannot query emails from Gmail.";
       appendDebug(errorMsg);
       console.error(errorMsg);
-      // Return diagnostic email within the flow's output structure
       return {
         emailList: [{
           id: 'diagnostic-flow-no-token',
@@ -253,15 +247,15 @@ const queryEmailsFlow = ai.defineFlow(
 
     // Step 1: Transform user query to Gmail API query string
     appendDebug(`[queryEmailsFlow STEP_1_TRANSFORM_QUERY_CALL] Calling transformQueryPrompt with user query: "${flowInput.query}"`);
-    const transformQueryInput: z.infer<typeof TransformQueryInputSchema> = { userQuery: flowInput.query };
+    const transformQueryInputForLLM: z.infer<typeof TransformQueryInputSchema> = { userQuery: flowInput.query };
     let gmailApiQueryString = '';
     try {
-      const transformResult = await transformQueryPrompt(transformQueryInput);
+      const transformResult = await transformQueryPrompt(transformQueryInputForLLM);
       if (!transformResult.output || !transformResult.output.gmailApiQuery) {
         const errorMsg = "[queryEmailsFlow STEP_1_TRANSFORM_QUERY_ERROR] Failed to transform user query to Gmail API query. LLM did not return expected output.";
         appendDebug(errorMsg);
         console.error(errorMsg);
-        gmailApiQueryString = flowInput.query; // Fallback to user query directly
+        gmailApiQueryString = flowInput.query; 
         appendDebug(`[queryEmailsFlow STEP_1_TRANSFORM_QUERY_FALLBACK] Using original user query as fallback for Gmail API query: "${gmailApiQueryString}"`);
       } else {
         gmailApiQueryString = transformResult.output.gmailApiQuery;
@@ -271,39 +265,37 @@ const queryEmailsFlow = ai.defineFlow(
         const errorMsg = `[queryEmailsFlow STEP_1_TRANSFORM_QUERY_EXCEPTION] Exception during transformQueryPrompt: ${transformError.message}`;
         appendDebug(errorMsg);
         console.error(errorMsg, transformError);
-        gmailApiQueryString = flowInput.query; // Fallback to user query directly
+        gmailApiQueryString = flowInput.query; 
         appendDebug(`[queryEmailsFlow STEP_1_TRANSFORM_QUERY_FALLBACK_EXCEPTION] Using original user query as fallback for Gmail API query due to exception: "${gmailApiQueryString}"`);
     }
 
-
     // Step 2: Fetch emails from Gmail using the transformed query
     appendDebug(`[queryEmailsFlow STEP_2_GMAIL_CALL] Calling fetchGmailMessages with AI-generated query: "${gmailApiQueryString}"`);
-    // Pass the debugMessages array to fetchGmailMessages
     const actualEmailsData: FetchedEmailData[] = await fetchGmailMessages(flowInput.accessToken, gmailApiQueryString, 20, debugMessages);
     appendDebug(`[queryEmailsFlow STEP_2_GMAIL_RESULT] fetchGmailMessages returned ${actualEmailsData.length} email(s) using AI-generated query.`);
 
     if (actualEmailsData.length === 0) {
         appendDebug('[queryEmailsFlow STEP_2_GMAIL_NO_EMAILS] fetchGmailMessages returned no emails with AI-generated query. Returning empty list.');
-        return { emailList: [] }; // Return empty list, outer function will add diagnostic if needed
+        return { emailList: [] }; 
     }
     if (actualEmailsData.length > 0) {
         appendDebug(`[queryEmailsFlow STEP_2_GMAIL_DATA_SAMPLE] Data from fetchGmailMessages (first email if any): ${JSON.stringify(actualEmailsData[0])}`);
     }
 
     // Step 3: Refine selection and summarize email snippets
-    const refineAndSummarizeInput: z.infer<typeof RefineAndSummarizeInputSchema> = {
-      originalUserQuery: flowInput.query, // Pass the original user query for context
+    const refineAndSummarizeInputForLLM: z.infer<typeof RefineAndSummarizeInputSchema> = {
+      originalUserQuery: flowInput.query,
       fetchedGmailEmails: actualEmailsData,
     };
 
-    appendDebug(`[queryEmailsFlow STEP_3_SUMMARIZE_CALL] Calling refineAndSummarizeEmailsPrompt with originalUserQuery: "${refineAndSummarizeInput.originalUserQuery}" and ${refineAndSummarizeInput.fetchedGmailEmails.length} fetched emails.`);
-    if (refineAndSummarizeInput.fetchedGmailEmails.length > 0) {
-      appendDebug(`Summarize input (first email if any): ${JSON.stringify(refineAndSummarizeInput.fetchedGmailEmails[0])}`);
+    appendDebug(`[queryEmailsFlow STEP_3_SUMMARIZE_CALL] Calling refineAndSummarizeEmailsPrompt with originalUserQuery: "${refineAndSummarizeInputForLLM.originalUserQuery}" and ${refineAndSummarizeInputForLLM.fetchedGmailEmails.length} fetched emails.`);
+    if (refineAndSummarizeInputForLLM.fetchedGmailEmails.length > 0) {
+      appendDebug(`Summarize input (first email if any): ${JSON.stringify(refineAndSummarizeInputForLLM.fetchedGmailEmails[0])}`);
     }
     
     let summarizeResultOutput: QueryEmailsOutput | null = null;
     try {
-        const summarizeResult = await refineAndSummarizeEmailsPrompt(refineAndSummarizeInput);
+        const summarizeResult = await refineAndSummarizeEmailsPrompt(refineAndSummarizeInputForLLM);
         if (!summarizeResult.output) {
             const errorMsg = "[queryEmailsFlow STEP_3_SUMMARIZE_ERROR] AI prompt (refineAndSummarize) did not return an output. Returning empty list.";
             appendDebug(errorMsg);
@@ -316,9 +308,8 @@ const queryEmailsFlow = ai.defineFlow(
         const errorMsg = `[queryEmailsFlow STEP_3_SUMMARIZE_EXCEPTION] Exception during refineAndSummarizeEmailsPrompt: ${summarizeError.message}`;
         appendDebug(errorMsg);
         console.error(errorMsg, summarizeError);
-        summarizeResultOutput = { emailList: [] }; // Fallback to empty list on exception
+        summarizeResultOutput = { emailList: [] }; 
     }
-
 
     appendDebug(`[queryEmailsFlow STEP_3_SUMMARIZE_RESULT] Refine/Summarize prompt returned ${summarizeResultOutput.emailList.length} email(s) after processing.`);
     if (summarizeResultOutput.emailList.length > 0) {
@@ -328,7 +319,6 @@ const queryEmailsFlow = ai.defineFlow(
     }
 
     appendDebug(`[queryEmailsFlow GENKIT_FLOW_EXIT] Returning ${summarizeResultOutput.emailList.length} processed emails from Genkit flow.`);
-    return summarizeResultOutput; // Return the list (could be empty)
+    return summarizeResultOutput; 
   }
 );
-
