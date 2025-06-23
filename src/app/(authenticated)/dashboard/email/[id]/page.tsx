@@ -66,16 +66,16 @@ export default function EmailPage() {
                               emailFromStorage.body === "Email body could not be extracted.";
         const isLikelyHtml = emailFromStorage.body?.toLowerCase().includes("<html") || emailFromStorage.body?.toLowerCase().includes("<body");
 
-        if (isSnippetOnly && !isLikelyHtml && !id.startsWith('placeholder-')) {
+        if (isSnippetOnly && !isLikelyHtml && !id.startsWith('placeholder-') && !id.startsWith('error-')) {
           await fetchFullBodyAndUpdateState(id, emailFromStorage);
         } else {
-          setIsLoadingEmail(false); // Already have full body or it's a mock
+          setIsLoadingEmail(false); // Already have full body or it's a mock/error
         }
-      } else if (!id.startsWith('placeholder-')) { // Potentially a direct link to a real Gmail ID not in localStorage
+      } else if (!id.startsWith('placeholder-') && !id.startsWith('error-')) { // Potentially a direct link to a real Gmail ID not in localStorage
         // Attempt to fetch its full content directly
         await fetchFullBodyAndUpdateState(id, null); // Pass null as no base data
       } else {
-        // Fallback for known placeholder IDs if not in localStorage (should be rare)
+        // Fallback for known placeholder or error IDs if not in localStorage (should be rare)
         setEmailData(MOCK_EMAIL_DB[id] || null);
         setIsLoadingEmail(false);
       }
