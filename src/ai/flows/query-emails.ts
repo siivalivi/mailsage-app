@@ -44,7 +44,6 @@ export type QueryEmailsOutput = z.infer<typeof QueryEmailsOutputSchema>;
 export async function queryEmails(input: QueryEmailsInput): Promise<QueryEmailsOutput> {
   if (!input.accessToken) {
     console.error('[queryEmails EXPORTED_FUNCTION_ERROR] Access token is missing.');
-    // This is a structured error that the UI can handle.
     return {
       emailList: [{
         id: 'error-no-access-token',
@@ -146,9 +145,12 @@ const queryEmailsFlow = ai.defineFlow(
       query: flowInput.query,
       currentDate: currentDateForLLM,
     });
-    const gmailQueryString = transformResponse.output?.gmailQuery || '';
+    
+    // Safely access the generated query string.
+    const gmailQueryString = transformResponse.output?.gmailQuery;
+
     if (!gmailQueryString) {
-        console.warn('AI failed to generate a Gmail query string.');
+        console.warn('AI failed to generate a Gmail query string. The model may have returned an invalid structure.');
         return { emailList: [] };
     }
 
@@ -169,8 +171,14 @@ const queryEmailsFlow = ai.defineFlow(
         fetchedEmails: fetchedEmails,
     });
     
-    // The .output property contains the structured JSON from the model.
+    // Safely access the final list of emails.
     // If the model fails to return valid JSON, .output will be undefined.
-    return refineResponse.output || { emailList: [] };
+    const finalResult = refineResponse.output;
+    if (!finalResult) {
+        console.warn('AI failed to refine and summarize the fetched emails into the correct format.');
+        return { emailList: [] };
+    }
+    
+    return finalResult;
   }
 );
