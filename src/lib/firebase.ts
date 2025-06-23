@@ -37,7 +37,7 @@ const firebaseConfig = {
   apiKey: apiKeyFromEnv,
   authDomain: authDomainFromEnv || placeholderAuthDomain,
   projectId: projectIdFromEnv || placeholderProjectId,
-  storageBucket: storageBucketFromEnv || "mailsage-erevl.firebasestorage.app", 
+  storageBucket: storageBucketFromEnv || "mailsage-erevl.appspot.com", 
   messagingSenderId: messagingSenderIdFromEnv || placeholderMessagingSenderId,
   appId: appIdFromEnv || placeholderAppId,
 };
@@ -81,4 +81,3 @@ googleProvider.setCustomParameters({
 
 
 export { auth, googleProvider, signInWithPopup, signOut, type User, type OAuthCredential, type UserCredential };
-

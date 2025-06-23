@@ -12,6 +12,6 @@ env:
   NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyBFrz8N_uGTrSkpivKRfMg9z5JEjDUxdcM"
   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "mailsage-erevl.firebaseapp.com"
   NEXT_PUBLIC_FIREBASE_PROJECT_ID: "mailsage-erevl"
-  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "mailsage-erevl.firebasestorage.app" # Corrected from .app to .app
+  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "mailsage-erevl.appspot.com"
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "1008775484489"
   NEXT_PUBLIC_FIREBASE_APP_ID: "1:1008775484489:web:c75130ebad77581c5fdb98"
