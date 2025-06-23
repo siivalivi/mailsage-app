@@ -3,15 +3,17 @@
 # when deployed to this App Hosting environment.
 
 env:
-  # Genkit API Key (from Google AI Studio)
-  # This is used by Genkit to authenticate with Google AI services.
-  GOOGLE_API_KEY: "AIzaSyByOmoOGcR-gAr9pVhvuIOv1bZMHI6p27I"
-
-  # Firebase SDK Configuration
-  # These are used by your Next.js application to initialize Firebase services.
-  NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyBFrz8N_uGTrSkpivKRfMg9z5JEjDUxdcM"
-  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "mailsage-erevl.firebaseapp.com"
-  NEXT_PUBLIC_FIREBASE_PROJECT_ID: "mailsage-erevl"
-  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "mailsage-erevl.appspot.com"
-  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "1008775484489"
-  NEXT_PUBLIC_FIREBASE_APP_ID: "1:1008775484489:web:c75130ebad77581c5fdb98"
+  - variable: GOOGLE_API_KEY
+    value: "AIzaSyByOmoOGcR-gAr9pVhvuIOv1bZMHI6p27I"
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyBFrz8N_uGTrSkpivKRfMg9z5JEjDUxdcM"
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "mailsage-erevl.firebaseapp.com"
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "mailsage-erevl"
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "mailsage-erevl.appspot.com"
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "1008775484489"
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:1008775484489:web:c75130ebad77581c5fdb98"
