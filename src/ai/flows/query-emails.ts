@@ -169,6 +169,8 @@ const queryEmailsFlow = ai.defineFlow(
         fetchedEmails: fetchedEmails,
     });
     
+    // The .output property contains the structured JSON from the model.
+    // If the model fails to return valid JSON, .output will be undefined.
     return refineResponse.output || { emailList: [] };
   }
 );
