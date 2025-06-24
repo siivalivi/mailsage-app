@@ -53,6 +53,7 @@ export async function queryEmails(
     console.error(
       '[queryEmails EXPORTED_FUNCTION_ERROR] Access token is missing.'
     );
+    // Return an error object that the UI can display safely
     return {
       emailList: [
         {
@@ -73,9 +74,10 @@ export async function queryEmails(
     return result;
   } catch (error: any) {
     console.error(
-      `[queryEmails EXPORTED_FUNCTION_CRITICAL_ERROR] Critical error during flow execution for query "${input.query}".`,
+      `[queryEmails EXPORTED_FUNCTION_CRITICAL_ERROR] Critical error during flow execution for query "${input.query}". Error:`,
       error
     );
+    // Return a structured error object
     return {
       emailList: [
         {
@@ -102,7 +104,15 @@ const transformQueryPrompt = ai.definePrompt({
 - Use the current date ("{{currentDate}}") as a reference for any relative date expressions (e.g., "last week", "month of may").
 - Translate keywords into Gmail search operators (e.g., from:, to:, subject:).
 - For financial queries mentioning "invoices," "bills," or "charges," broaden the search with terms like '(invoice OR receipt OR bill OR payment)'.
-- Return ONLY the query string in the response.
+- Your output MUST be a valid JSON object with a single key "gmailQuery".
+
+Example:
+User Query: "invoices from Uber last month"
+Current Date: 2024-07-23
+Output:
+{
+  "gmailQuery": "from:uber (invoice OR receipt OR bill OR payment) after:2024/06/22 before:2024/07/24"
+}
 
 User Query: "{{query}}"
 Current Date: {{currentDate}}`,
@@ -159,25 +169,24 @@ const queryEmailsFlow = ai.defineFlow(
     // Step 1: Convert natural language query to a Gmail API query string.
     console.log('[queryEmailsFlow] Step 1: Transforming query...');
     const now = new Date();
-    const currentDateForLLM = `${now.getFullYear()}-${(
-      now.getMonth() + 1
-    )
+    const currentDateForLLM = `${now.getFullYear()}-${(now.getMonth() + 1)
       .toString()
       .padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
 
-    const { output: transformOutput } = await transformQueryPrompt({
+    const transformResponse = await transformQueryPrompt({
       query: flowInput.query,
       currentDate: currentDateForLLM,
     });
-
-    const gmailQueryString = transformOutput?.gmailQuery;
-
-    if (!gmailQueryString) {
-      console.warn(
-        '[queryEmailsFlow] AI failed to generate a Gmail query string. The model may have returned an invalid structure. Response was:', transformOutput
-      );
-      return { emailList: [] };
+    
+    console.log('[queryEmailsFlow] Raw response from transformQueryPrompt:', JSON.stringify(transformResponse));
+    
+    const transformOutput = transformResponse.output;
+    if (!transformOutput || !transformOutput.gmailQuery) {
+        console.error('[queryEmailsFlow] ERROR: The AI model failed to produce a structured output for the query transform. The raw response did not contain a valid output field.', transformResponse);
+        throw new Error('The AI model could not understand the request to generate a search query.');
     }
+
+    const gmailQueryString = transformOutput.gmailQuery;
     console.log(`[queryEmailsFlow] Step 1 complete. Generated Gmail query: "${gmailQueryString}"`);
 
     // Step 2: Fetch emails from Gmail using the generated query string.
@@ -189,23 +198,25 @@ const queryEmailsFlow = ai.defineFlow(
     );
 
     if (fetchedEmails.length === 0) {
-      console.log('[queryEmailsFlow] Step 2 complete. No emails found.');
+      console.log('[queryEmailsFlow] Step 2 complete. No emails found for the query.');
       return { emailList: [] };
     }
     console.log(`[queryEmailsFlow] Step 2 complete. Fetched ${fetchedEmails.length} emails.`);
 
     // Step 3: Use AI to refine the list and generate summaries.
     console.log('[queryEmailsFlow] Step 3: Refining and summarizing emails...');
-    const { output: finalResult } = await refineAndSummarizeEmailsPrompt({
+    const refineResponse = await refineAndSummarizeEmailsPrompt({
       userQuery: flowInput.query,
       fetchedEmails: fetchedEmails,
     });
+    
+    console.log('[queryEmailsFlow] Raw response from refineAndSummarizeEmailsPrompt:', JSON.stringify(refineResponse));
+
+    const finalResult = refineResponse.output;
 
     if (!finalResult) {
-      console.warn(
-        '[queryEmailsFlow] AI failed to refine and summarize the fetched emails into the correct format.'
-      );
-      return { emailList: [] };
+      console.error('[queryEmailsFlow] ERROR: The AI model failed to refine and summarize the fetched emails into the correct format. The raw response did not contain a valid output field.', refineResponse);
+      throw new Error('The AI model failed to process and summarize the fetched emails.');
     }
     
     console.log(`[queryEmailsFlow] Step 3 complete. Returning ${finalResult.emailList.length} summarized emails.`);
