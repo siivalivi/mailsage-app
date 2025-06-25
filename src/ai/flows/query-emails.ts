@@ -163,7 +163,7 @@ const queryEmailsFlow = ai.defineFlow(
   },
   async (flowInput) => {
     // Step 1: Convert natural language query to a Gmail API query string.
-    console.log('[queryEmailsFlow] Step 1: Transforming query...');
+    console.log('[DIAGNOSTIC] Step 1: Transforming query...');
     const now = new Date();
     const currentDateForLLM = `${now.getFullYear()}-${(now.getMonth() + 1)
       .toString()
@@ -174,18 +174,29 @@ const queryEmailsFlow = ai.defineFlow(
       currentDate: currentDateForLLM,
     });
     
-    if (!transformResponse || !transformResponse.output) {
-      throw new Error("AI failed to generate a search query (transform prompt returned no output).");
-    }
-    const gmailQuery = transformResponse.output.gmailQuery;
-    if (!gmailQuery || typeof gmailQuery !== 'string') {
-      throw new Error(`AI failed to generate a valid search query. The model returned: ${JSON.stringify(transformResponse.output)}`);
+    // AGGRESSIVE LOGGING
+    console.log('[DIAGNOSTIC] RAW transformResponse object from AI:', JSON.stringify(transformResponse, null, 2));
+
+    let gmailQuery: string;
+    try {
+        if (!transformResponse || !transformResponse.output) {
+          throw new Error("Transform prompt returned no response or output.");
+        }
+        gmailQuery = transformResponse.output.gmailQuery;
+        if (!gmailQuery || typeof gmailQuery !== 'string') {
+          throw new Error(`AI failed to generate a valid search query string. Model output: ${JSON.stringify(transformResponse.output)}`);
+        }
+    } catch (e: any) {
+        console.error('[DIAGNOSTIC] CRASH while processing transformResponse. Error:', e.message);
+        // Log the object that caused the crash
+        console.error('[DIAGNOSTIC] Object that caused crash:', JSON.stringify(transformResponse, null, 2));
+        throw e; // rethrow to be caught by the outer handler
     }
     
-    console.log(`[queryEmailsFlow] Step 1 complete. Generated Gmail query: "${gmailQuery}"`);
+    console.log(`[DIAGNOSTIC] Step 1 complete. Generated Gmail query: "${gmailQuery}"`);
 
     // Step 2: Fetch emails from Gmail using the generated query string.
-    console.log('[queryEmailsFlow] Step 2: Fetching emails from Gmail...');
+    console.log('[DIAGNOSTIC] Step 2: Fetching emails...');
     const fetchedEmails = await fetchGmailMessages(
       flowInput.accessToken,
       gmailQuery,
@@ -193,28 +204,39 @@ const queryEmailsFlow = ai.defineFlow(
     );
 
     if (fetchedEmails.length === 0) {
-      console.log('[queryEmailsFlow] Step 2 complete. No emails found for the query.');
+      console.log('[DIAGNOSTIC] Step 2 complete. No emails found.');
       return { emailList: [] };
     }
-    console.log(`[queryEmailsFlow] Step 2 complete. Fetched ${fetchedEmails.length} emails.`);
+    console.log(`[DIAGNOSTIC] Step 2 complete. Fetched ${fetchedEmails.length} emails.`);
 
     // Step 3: Use AI to refine the list and generate summaries.
-    console.log('[queryEmailsFlow] Step 3: Refining and summarizing emails...');
+    console.log('[DIAGNOSTIC] Step 3: Refining and summarizing...');
     const refineResponse = await refineAndSummarizeEmailsPrompt({
       userQuery: flowInput.query,
       fetchedEmails: fetchedEmails,
     });
     
-    if (!refineResponse || !refineResponse.output) {
-      throw new Error("AI failed to summarize emails (refine prompt returned no response or output).");
-    }
-    const finalResult = refineResponse.output;
+    // AGGRESSIVE LOGGING
+    console.log('[DIAGNOSTIC] RAW refineResponse object from AI:', JSON.stringify(refineResponse, null, 2));
+    
+    let finalResult: QueryEmailsOutput;
+    try {
+        if (!refineResponse || !refineResponse.output) {
+          throw new Error("Refine prompt returned no response or output.");
+        }
+        finalResult = refineResponse.output;
 
-    if (!finalResult.emailList || !Array.isArray(finalResult.emailList)) {
-        throw new Error(`AI returned data in an unexpected format. The model returned: ${JSON.stringify(finalResult)}`);
+        if (!finalResult.emailList || !Array.isArray(finalResult.emailList)) {
+            throw new Error(`AI returned data in an unexpected format. Model output: ${JSON.stringify(finalResult)}`);
+        }
+    } catch (e: any) {
+        console.error('[DIAGNOSTIC] CRASH while processing refineResponse. Error:', e.message);
+        // Log the object that caused the crash
+        console.error('[DIAGNOSTIC] Object that caused crash:', JSON.stringify(refineResponse, null, 2));
+        throw e; // rethrow to be caught by the outer handler
     }
     
-    console.log(`[queryEmailsFlow] Step 3 complete. Returning ${finalResult.emailList.length} summarized emails.`);
+    console.log(`[DIAGNOSTIC] Step 3 complete. Returning ${finalResult.emailList.length} summarized emails.`);
     return finalResult;
   }
 );
