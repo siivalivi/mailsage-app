@@ -174,7 +174,6 @@ const queryEmailsFlow = ai.defineFlow(
       currentDate: currentDateForLLM,
     });
     
-    // DEFENSIVE CHECK: Ensure the AI response and its output exist.
     if (!transformResponse || !transformResponse.output) {
       throw new Error("AI failed to generate a search query (transform prompt returned no output).");
     }
@@ -206,13 +205,11 @@ const queryEmailsFlow = ai.defineFlow(
       fetchedEmails: fetchedEmails,
     });
     
-    // DEFENSIVE CHECK: Ensure the AI response and its output exist.
     if (!refineResponse || !refineResponse.output) {
-      throw new Error("AI failed to summarize emails (refine prompt returned no output).");
+      throw new Error("AI failed to summarize emails (refine prompt returned no response or output).");
     }
     const finalResult = refineResponse.output;
 
-    // DEFENSIVE CHECK: Ensure the final result has the expected structure.
     if (!finalResult.emailList || !Array.isArray(finalResult.emailList)) {
         throw new Error(`AI returned data in an unexpected format. The model returned: ${JSON.stringify(finalResult)}`);
     }

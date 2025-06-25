@@ -34,13 +34,12 @@ const summarizeEmailFlow = ai.defineFlow(
   },
   async input => {
     const response = await summarizeEmailPrompt(input);
-    const output = response.output;
-
-    if (!output) {
-      console.error('[summarizeEmailFlow] ERROR: The AI model failed to generate a summary. The response did not contain a valid `output` field.', response);
+    
+    if (!response || !response.output) {
+      console.error('[summarizeEmailFlow] ERROR: The AI model failed to generate a summary. The response or its output was undefined.', response);
       throw new Error("The AI failed to generate a summary for the email.");
     }
     
-    return output;
+    return response.output;
   }
 );
