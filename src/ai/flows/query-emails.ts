@@ -49,25 +49,6 @@ export type QueryEmailsOutput = z.infer<typeof QueryEmailsOutputSchema>;
 export async function queryEmails(
   input: QueryEmailsInput
 ): Promise<QueryEmailsOutput> {
-  if (!input.accessToken) {
-    console.error(
-      '[queryEmails EXPORTED_FUNCTION_ERROR] Access token is missing.'
-    );
-    return {
-      emailList: [
-        {
-          id: 'error-no-access-token',
-          sender: 'MailSage System',
-          subject: 'Error: Missing Access Token',
-          snippet:
-            'The application did not provide the necessary authentication token to search Gmail. Please try signing in again.',
-          timestamp: Date.now(),
-          summary: 'Authentication failed. Cannot connect to Gmail.',
-        },
-      ],
-    };
-  }
-
   try {
     const result = await queryEmailsFlow(input);
     return result;
@@ -114,45 +95,6 @@ User Query: "{{query}}"
 Current Date: {{currentDate}}`,
 });
 
-// --- Prompt 2: Refine and Summarize Fetched Emails ---
-
-const refineAndSummarizeEmailsPrompt = ai.definePrompt({
-  name: 'refineAndSummarizeEmailsPrompt',
-  input: {
-    schema: z.object({
-      userQuery: z.string(),
-      fetchedEmails: z.array(
-        z.object({
-          id: z.string(),
-          sender: z.string(),
-          subject: z.string(),
-          snippet: z.string(),
-          timestamp: z.number(),
-        })
-      ),
-    }),
-  },
-  output: { schema: QueryEmailsOutputSchema },
-  system: `You are an intelligent email analysis assistant. You have been given a list of emails (metadata and snippets) that were fetched from Gmail based on an initial query. Your task is to analyze these results in the context of the user's original query, filter out any irrelevant emails, and generate a concise, helpful summary for each relevant one.
-
-User's original query: "{{userQuery}}"
-
-Analyze the following emails:
-{{#each fetchedEmails}}
-- Email ID: {{id}}
-  - Sender: {{sender}}
-  - Subject: {{subject}}
-  - Snippet: {{{snippet}}}
----
-{{/each}}
-
-Your process:
-1.  **Filter:** For each email, decide if its sender, subject, and snippet are truly relevant to the user's original query. Discard promotional content or notifications that don't match the query's intent.
-2.  **Summarize:** For each relevant email, create a concise summary from its snippet that directly addresses what the user was asking for.
-3.  **Format Output:** Your output MUST be ONLY a valid JSON object containing a single key 'emailList', which is an array of the relevant, summarized emails. The objects in the array must conform to this schema: {id: string, sender: string, subject: string, snippet: string, timestamp: number, summary: string}. If no emails are relevant, return a JSON object with an empty 'emailList'.
-`,
-});
-
 // --- Main Flow Definition ---
 
 const queryEmailsFlow = ai.defineFlow(
@@ -162,81 +104,44 @@ const queryEmailsFlow = ai.defineFlow(
     outputSchema: QueryEmailsOutputSchema,
   },
   async (flowInput) => {
-    // Step 1: Convert natural language query to a Gmail API query string.
-    console.log('[DIAGNOSTIC] Step 1: Transforming query...');
+    
+    console.log('[DIAGNOSTIC] Starting diagnostic run...');
     const now = new Date();
     const currentDateForLLM = `${now.getFullYear()}-${(now.getMonth() + 1)
       .toString()
       .padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
 
-    const transformResponse = await transformQueryPrompt({
-      query: flowInput.query,
-      currentDate: currentDateForLLM,
-    });
-    
-    // AGGRESSIVE LOGGING
-    console.log('[DIAGNOSTIC] RAW transformResponse object from AI:', JSON.stringify(transformResponse, null, 2));
-
-    let gmailQuery: string;
     try {
-        if (!transformResponse || !transformResponse.output) {
-          throw new Error("Transform prompt returned no response or output.");
-        }
-        gmailQuery = transformResponse.output.gmailQuery;
-        if (!gmailQuery || typeof gmailQuery !== 'string') {
-          throw new Error(`AI failed to generate a valid search query string. Model output: ${JSON.stringify(transformResponse.output)}`);
-        }
+      const transformResponse = await transformQueryPrompt({
+        query: flowInput.query,
+        currentDate: currentDateForLLM,
+      });
+
+      // ----> THE CORE DIAGNOSTIC STEP <----
+      console.log('!!!!!!!!!! RAW AI RESPONSE OBJECT (BEGIN) !!!!!!!!!!');
+      console.log(transformResponse);
+      console.log('!!!!!!!!!! RAW AI RESPONSE OBJECT (END) !!!!!!!!!!');
+      
     } catch (e: any) {
-        console.error('[DIAGNOSTIC] CRASH while processing transformResponse. Error:', e.message);
-        // Log the object that caused the crash
-        console.error('[DIAGNOSTIC] Object that caused crash:', JSON.stringify(transformResponse, null, 2));
-        throw e; // rethrow to be caught by the outer handler
+        console.error("!!!!!!!!!! PROMPT CALL FAILED WITH AN EXCEPTION (BEGIN) !!!!!!!!!!");
+        console.error(e);
+        console.error("!!!!!!!!!! PROMPT CALL FAILED WITH AN EXCEPTION (END) !!!!!!!!!!");
     }
-    
-    console.log(`[DIAGNOSTIC] Step 1 complete. Generated Gmail query: "${gmailQuery}"`);
 
-    // Step 2: Fetch emails from Gmail using the generated query string.
-    console.log('[DIAGNOSTIC] Step 2: Fetching emails...');
-    const fetchedEmails = await fetchGmailMessages(
-      flowInput.accessToken,
-      gmailQuery,
-      20
-    );
-
-    if (fetchedEmails.length === 0) {
-      console.log('[DIAGNOSTIC] Step 2 complete. No emails found.');
-      return { emailList: [] };
-    }
-    console.log(`[DIAGNOSTIC] Step 2 complete. Fetched ${fetchedEmails.length} emails.`);
-
-    // Step 3: Use AI to refine the list and generate summaries.
-    console.log('[DIAGNOSTIC] Step 3: Refining and summarizing...');
-    const refineResponse = await refineAndSummarizeEmailsPrompt({
-      userQuery: flowInput.query,
-      fetchedEmails: fetchedEmails,
-    });
-    
-    // AGGRESSIVE LOGGING
-    console.log('[DIAGNOSTIC] RAW refineResponse object from AI:', JSON.stringify(refineResponse, null, 2));
-    
-    let finalResult: QueryEmailsOutput;
-    try {
-        if (!refineResponse || !refineResponse.output) {
-          throw new Error("Refine prompt returned no response or output.");
-        }
-        finalResult = refineResponse.output;
-
-        if (!finalResult.emailList || !Array.isArray(finalResult.emailList)) {
-            throw new Error(`AI returned data in an unexpected format. Model output: ${JSON.stringify(finalResult)}`);
-        }
-    } catch (e: any) {
-        console.error('[DIAGNOSTIC] CRASH while processing refineResponse. Error:', e.message);
-        // Log the object that caused the crash
-        console.error('[DIAGNOSTIC] Object that caused crash:', JSON.stringify(refineResponse, null, 2));
-        throw e; // rethrow to be caught by the outer handler
-    }
-    
-    console.log(`[DIAGNOSTIC] Step 3 complete. Returning ${finalResult.emailList.length} summarized emails.`);
-    return finalResult;
+    // Return a dummy object to satisfy the output schema and stop execution.
+    return {
+      emailList: [
+        {
+          id: 'diag-run-complete',
+          sender: 'MailSage Diagnostics',
+          subject: 'Diagnostic Run Complete',
+          snippet: 'Check the server logs for the "RAW AI RESPONSE OBJECT".',
+          timestamp: Date.now(),
+          summary: 'The diagnostic test has finished. Please check your server logs for the output from the AI model.',
+        },
+      ],
+    };
   }
 );
+
+// The original refineAndSummarizeEmailsPrompt and the rest of the flow logic are intentionally omitted for this diagnostic test.
