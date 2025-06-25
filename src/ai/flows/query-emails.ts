@@ -92,17 +92,17 @@ export async function queryEmails(
   }
 }
 
-// --- Prompt 1: Transform Natural Language to Gmail Query (Returns JSON string) ---
+// --- Prompt 1: Transform Natural Language to Gmail Query ---
 
 const transformQueryPrompt = ai.definePrompt({
   name: 'transformQueryPrompt',
   input: { schema: z.object({ query: z.string(), currentDate: z.string() }) },
-  // NO output schema, we will parse the raw text response.
+  output: { schema: z.object({ gmailQuery: z.string() }) },
   system: `You are a powerful text-processing utility. Your task is to convert a user's natural language email query into a valid, efficient Gmail API search query string.
 - Use the current date ("{{currentDate}}") as a reference for any relative date expressions (e.g., "last week", "month of may").
 - Translate keywords into Gmail search operators (e.g., from:, to:, subject:).
 - For financial queries mentioning "invoices," "bills," or "charges," broaden the search with terms like '(invoice OR receipt OR bill OR payment)'.
-- Your output MUST be ONLY a valid JSON object with a single key "gmailQuery". Do not add any conversational text or markdown formatting like \`\`\`json.
+- Respond ONLY with a valid JSON object with a single key "gmailQuery".
 
 Example:
 User Query: "invoices from Uber last month"
@@ -114,7 +114,7 @@ User Query: "{{query}}"
 Current Date: {{currentDate}}`,
 });
 
-// --- Prompt 2: Refine and Summarize Fetched Emails (Returns JSON string) ---
+// --- Prompt 2: Refine and Summarize Fetched Emails ---
 
 const refineAndSummarizeEmailsPrompt = ai.definePrompt({
   name: 'refineAndSummarizeEmailsPrompt',
@@ -132,7 +132,7 @@ const refineAndSummarizeEmailsPrompt = ai.definePrompt({
       ),
     }),
   },
-  // NO output schema, we will parse the raw text response.
+  output: { schema: QueryEmailsOutputSchema },
   system: `You are an intelligent email analysis assistant. You have been given a list of emails (metadata and snippets) that were fetched from Gmail based on an initial query. Your task is to analyze these results in the context of the user's original query, filter out any irrelevant emails, and generate a concise, helpful summary for each relevant one.
 
 User's original query: "{{userQuery}}"
@@ -149,7 +149,7 @@ Analyze the following emails:
 Your process:
 1.  **Filter:** For each email, decide if its sender, subject, and snippet are truly relevant to the user's original query. Discard promotional content or notifications that don't match the query's intent.
 2.  **Summarize:** For each relevant email, create a concise summary from its snippet that directly addresses what the user was asking for.
-3.  **Format Output:** Your output MUST be ONLY a valid JSON object containing a single key 'emailList', which is an array of the relevant, summarized emails. The objects in the array must conform to this schema: {id: string, sender: string, subject: string, snippet: string, timestamp: number, summary: string}. If no emails are relevant, return a JSON object with an empty 'emailList'. Do not add any conversational text or markdown formatting like \`\`\`json.
+3.  **Format Output:** Your output MUST be ONLY a valid JSON object containing a single key 'emailList', which is an array of the relevant, summarized emails. The objects in the array must conform to this schema: {id: string, sender: string, subject: string, snippet: string, timestamp: number, summary: string}. If no emails are relevant, return a JSON object with an empty 'emailList'.
 `,
 });
 
@@ -174,29 +174,22 @@ const queryEmailsFlow = ai.defineFlow(
       currentDate: currentDateForLLM,
     });
     
-    let gmailQueryString: string;
-    try {
-        const rawJson = transformResponse.text;
-        if (!rawJson) {
-            throw new Error('AI response was empty.');
-        }
-        const parsed = JSON.parse(rawJson);
-        if (typeof parsed.gmailQuery !== 'string' || !parsed.gmailQuery) {
-            throw new Error('Parsed JSON does not contain a valid "gmailQuery" string.');
-        }
-        gmailQueryString = parsed.gmailQuery;
-    } catch (e: any) {
-        console.error('[queryEmailsFlow] ERROR: Failed to parse or validate JSON from transformQueryPrompt.', { rawResponse: transformResponse.text, error: e.message });
-        throw new Error(`The AI failed to generate a valid search query. Raw response: ${transformResponse.text}`);
+    // DEFENSIVE CHECK: Ensure the AI response and its output exist.
+    if (!transformResponse || !transformResponse.output) {
+      throw new Error("AI failed to generate a search query (transform prompt returned no output).");
+    }
+    const gmailQuery = transformResponse.output.gmailQuery;
+    if (!gmailQuery || typeof gmailQuery !== 'string') {
+      throw new Error(`AI failed to generate a valid search query. The model returned: ${JSON.stringify(transformResponse.output)}`);
     }
     
-    console.log(`[queryEmailsFlow] Step 1 complete. Generated Gmail query: "${gmailQueryString}"`);
+    console.log(`[queryEmailsFlow] Step 1 complete. Generated Gmail query: "${gmailQuery}"`);
 
     // Step 2: Fetch emails from Gmail using the generated query string.
     console.log('[queryEmailsFlow] Step 2: Fetching emails from Gmail...');
     const fetchedEmails = await fetchGmailMessages(
       flowInput.accessToken,
-      gmailQueryString,
+      gmailQuery,
       20
     );
 
@@ -213,25 +206,15 @@ const queryEmailsFlow = ai.defineFlow(
       fetchedEmails: fetchedEmails,
     });
     
-    let finalResult: QueryEmailsOutput;
-    try {
-        const rawJson = refineResponse.text;
-        if (!rawJson) {
-            throw new Error('AI response for summarization was empty.');
-        }
-        const parsed = JSON.parse(rawJson);
+    // DEFENSIVE CHECK: Ensure the AI response and its output exist.
+    if (!refineResponse || !refineResponse.output) {
+      throw new Error("AI failed to summarize emails (refine prompt returned no output).");
+    }
+    const finalResult = refineResponse.output;
 
-        // Validate the parsed structure using Zod
-        const validation = QueryEmailsOutputSchema.safeParse(parsed);
-        if (!validation.success) {
-            console.error('[queryEmailsFlow] Zod validation failed for refineAndSummarizeEmailsPrompt output.', validation.error);
-            throw new Error(`AI returned data in an unexpected format. Validation errors: ${validation.error.message}`);
-        }
-        finalResult = validation.data;
-
-    } catch (e: any) {
-        console.error('[queryEmailsFlow] ERROR: Failed to parse or validate JSON from refineAndSummarizeEmailsPrompt.', { rawResponse: refineResponse.text, error: e.message });
-        throw new Error(`The AI failed to summarize the fetched emails. Raw response: ${refineResponse.text}`);
+    // DEFENSIVE CHECK: Ensure the final result has the expected structure.
+    if (!finalResult.emailList || !Array.isArray(finalResult.emailList)) {
+        throw new Error(`AI returned data in an unexpected format. The model returned: ${JSON.stringify(finalResult)}`);
     }
     
     console.log(`[queryEmailsFlow] Step 3 complete. Returning ${finalResult.emailList.length} summarized emails.`);
