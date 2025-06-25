@@ -180,13 +180,13 @@ const queryEmailsFlow = ai.defineFlow(
     
     console.log('[queryEmailsFlow] Raw response from transformQueryPrompt:', JSON.stringify(transformResponse));
     
-    const transformOutput = transformResponse.output;
-    if (!transformOutput || !transformOutput.gmailQuery) {
-        console.error('[queryEmailsFlow] ERROR: The AI model failed to produce a structured output for the query transform. The raw response did not contain a valid output field.', transformResponse);
+    const gmailQueryString = transformResponse.output?.gmailQuery;
+
+    if (!gmailQueryString) {
+        console.error('[queryEmailsFlow] ERROR: The AI model failed to produce a structured output for the query transform. The raw response did not contain a valid `output.gmailQuery` field.', transformResponse);
         throw new Error('The AI model could not understand the request to generate a search query.');
     }
 
-    const gmailQueryString = transformOutput.gmailQuery;
     console.log(`[queryEmailsFlow] Step 1 complete. Generated Gmail query: "${gmailQueryString}"`);
 
     // Step 2: Fetch emails from Gmail using the generated query string.
@@ -215,7 +215,7 @@ const queryEmailsFlow = ai.defineFlow(
     const finalResult = refineResponse.output;
 
     if (!finalResult) {
-      console.error('[queryEmailsFlow] ERROR: The AI model failed to refine and summarize the fetched emails into the correct format. The raw response did not contain a valid output field.', refineResponse);
+      console.error('[queryEmailsFlow] ERROR: The AI model failed to refine and summarize the fetched emails into the correct format. The raw response did not contain a valid `output` field.', refineResponse);
       throw new Error('The AI model failed to process and summarize the fetched emails.');
     }
     
