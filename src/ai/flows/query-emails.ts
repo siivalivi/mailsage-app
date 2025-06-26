@@ -15,7 +15,7 @@ import { fetchGmailMessages, FetchedEmailData } from '@/services/gmailService';
 
 // --- Public Input/Output Schemas ---
 
-const QueryEmailsInputSchema = z.object({
+export const QueryEmailsInputSchema = z.object({
   query: z.string().describe('The natural language query to search emails.'),
   accessToken: z
     .string()
@@ -38,7 +38,7 @@ const QueriedEmailAISummarySchema = z.object({
     ),
 });
 
-const QueryEmailsOutputSchema = z.object({
+export const QueryEmailsOutputSchema = z.object({
   emailList: z
     .array(QueriedEmailAISummarySchema)
     .describe(
@@ -55,7 +55,7 @@ export async function queryEmails(
   try {
     const result = await queryEmailsFlow(input);
     if (!result) {
-        throw new Error('Flow returned no result.');
+      throw new Error('Flow returned no result.');
     }
     return result;
   } catch (error: any) {
@@ -83,15 +83,15 @@ export async function queryEmails(
 // --- Prompt 1: Transform Natural Language to Gmail Query ---
 
 const GmailQuerySchema = z.object({
-  gmailQueryString: z.string().describe("The generated Gmail API query string."),
+  gmailQueryString: z.string().describe('The generated Gmail API query string.'),
 });
 
 const transformQueryPrompt = ai.definePrompt({
   name: 'transformQueryPrompt',
   input: { schema: z.object({ query: z.string(), currentDate: z.string() }) },
   output: { schema: GmailQuerySchema },
-  system: `You are a powerful text-processing utility. Your task is to convert a user's natural language email query into a valid, efficient Gmail API search query string. You MUST format your response as a JSON object that conforms to the provided schema.`,
-  prompt: `
+  prompt: `You are a powerful text-processing utility. Your task is to convert a user's natural language email query into a valid, efficient Gmail API search query string. You MUST format your response as a JSON object that conforms to the provided schema.
+
 - Use the current date ("{{currentDate}}") as a reference for any relative date expressions (e.g., "last week", "month of may").
 - Translate keywords into Gmail search operators (e.g., from:, to:, subject:).
 - For financial queries mentioning "invoices," "bills," or "charges," broaden the search with terms like '(invoice OR receipt OR bill OR payment)'.
@@ -103,13 +103,21 @@ User Query: "{{query}}"
 // --- Prompt 2: Refine and Summarize Fetched Emails ---
 
 const RefinedEmailSchema = z.object({
-  isRelevant: z.boolean().describe('Set to true if the email is relevant to the original user query, otherwise false.'),
+  isRelevant: z
+    .boolean()
+    .describe(
+      'Set to true if the email is relevant to the original user query, otherwise false.'
+    ),
   id: z.string().describe('The original Gmail message ID.'),
   sender: z.string().describe('The original sender of the email.'),
   subject: z.string().describe('The original subject of the email.'),
   snippet: z.string().describe('The original snippet of the email.'),
   timestamp: z.number().describe('The original timestamp of the email.'),
-  summary: z.string().describe('A concise, AI-generated summary of the snippet, focusing on aspects relevant to the user query. If not relevant, this can be a brief note.'),
+  summary: z
+    .string()
+    .describe(
+      'A concise, AI-generated summary of the snippet, focusing on aspects relevant to the user query. If not relevant, this can be a brief note.'
+    ),
 });
 
 const RefineAndSummarizeOutputSchema = z.object({
@@ -124,19 +132,22 @@ const FetchedEmailDataSchema = z.object({
   timestamp: z.number(),
 });
 
-
 const refineAndSummarizeEmailsPrompt = ai.definePrompt({
   name: 'refineAndSummarizeEmailsPrompt',
-  input: { schema: z.object({ query: z.string(), emails: z.array(FetchedEmailDataSchema) }) },
+  input: {
+    schema: z.object({
+      query: z.string(),
+      emails: z.array(FetchedEmailDataSchema),
+    }),
+  },
   output: { schema: RefineAndSummarizeOutputSchema },
-  system: `You are an intelligent email processing agent. Your task is to review a list of emails fetched from Gmail based on a search query.
+  prompt: `You are an intelligent email processing agent. Your task is to review a list of emails fetched from Gmail based on a search query.
 For EACH email, you must perform two actions:
 1.  Relevance Check: Determine if the email's content (snippet) is truly relevant to the user's original query.
 2.  Summarization: If the email is relevant, create a concise, informative summary of its snippet that directly addresses the user's query intent.
 Produce a JSON output containing a 'refinedEmails' array. For EACH email provided above, include an object in the array with the fields 'isRelevant', 'id', 'sender', 'subject', 'snippet', 'timestamp', and 'summary'.
 - Only include emails where 'isRelevant' is true in the final user-facing list.
-`,
-  prompt: `
+
 User's Original Query: "{{query}}"
 
 Here are the emails to process:
@@ -149,9 +160,8 @@ Timestamp: {{timestamp}}
 Snippet: "{{snippet}}"
 ---
 {{/each}}
-`
+`,
 });
-
 
 // --- Main Flow Definition ---
 
@@ -175,14 +185,18 @@ const queryEmailsFlow = ai.defineFlow(
         currentDate: currentDateForLLM,
       },
     });
-    
+
     const transformResult = transformResponse.output;
 
     if (!transformResult || !transformResult.gmailQueryString) {
-      throw new Error('AI failed to transform the query. The model response was empty, invalid, or did not contain a query string.');
+      throw new Error(
+        'AI failed to transform the query. The model response was empty, invalid, or did not contain a query string.'
+      );
     }
     const transformedQuery = transformResult.gmailQueryString;
-    console.log(`[queryEmailsFlow] AI-generated Gmail query: "${transformedQuery}"`);
+    console.log(
+      `[queryEmailsFlow] AI-generated Gmail query: "${transformedQuery}"`
+    );
 
     // STEP 2: Fetch emails from Gmail API using the transformed query.
     const emails: FetchedEmailData[] = await fetchGmailMessages(
@@ -192,31 +206,36 @@ const queryEmailsFlow = ai.defineFlow(
     );
 
     if (emails.length === 0) {
-      console.log('[queryEmailsFlow] No emails found from Gmail API. Returning empty list.');
+      console.log(
+        '[queryEmailsFlow] No emails found from Gmail API. Returning empty list.'
+      );
       return { emailList: [] };
     }
-    console.log(`[queryEmailsFlow] Fetched ${emails.length} emails from Gmail. Now refining with AI.`);
-
+    console.log(
+      `[queryEmailsFlow] Fetched ${emails.length} emails from Gmail. Now refining with AI.`
+    );
 
     // STEP 3: Use AI to refine and summarize the fetched emails.
     const refineResponse = await ai.generate({
-        prompt: refineAndSummarizeEmailsPrompt,
-        input: {
-            query: flowInput.query,
-            emails: emails,
-        }
+      prompt: refineAndSummarizeEmailsPrompt,
+      input: {
+        query: flowInput.query,
+        emails: emails,
+      },
     });
 
     const refineResult = refineResponse.output;
-    
+
     if (!refineResult || !refineResult.refinedEmails) {
-        throw new Error("AI failed to refine and summarize the fetched emails. The model response was empty, invalid, or did not contain refined emails.");
+      throw new Error(
+        'AI failed to refine and summarize the fetched emails. The model response was empty, invalid, or did not contain refined emails.'
+      );
     }
-    
+
     // Filter for relevant emails and map to the final output schema.
     const relevantEmails = refineResult.refinedEmails
-      .filter(email => email.isRelevant)
-      .map(email => ({
+      .filter((email) => email.isRelevant)
+      .map((email) => ({
         id: email.id,
         sender: email.sender,
         subject: email.subject,
@@ -225,7 +244,9 @@ const queryEmailsFlow = ai.defineFlow(
         summary: email.summary,
       }));
 
-    console.log(`[queryEmailsFlow] AI refined the list to ${relevantEmails.length} relevant emails.`);
+    console.log(
+      `[queryEmailsFlow] AI refined the list to ${relevantEmails.length} relevant emails.`
+    );
     return { emailList: relevantEmails };
   }
 );
