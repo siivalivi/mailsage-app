@@ -169,16 +169,21 @@ const queryEmailsFlow = ai.defineFlow(
       .toString()
       .padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
 
-    // STEP 1: Transform natural language query to a Gmail API query string.
-    const transformResult = await transformQueryPrompt({
-      query: flowInput.query,
-      currentDate: currentDateForLLM,
+    // STEP 1: Transform natural language query to a Gmail API query string using explicit ai.generate().
+    const transformResponse = await ai.generate({
+      prompt: transformQueryPrompt,
+      input: {
+        query: flowInput.query,
+        currentDate: currentDateForLLM,
+      },
     });
     
-    if (!transformResult || !transformResult.output) {
-      throw new Error('AI failed to transform the natural language query. The model response was empty or invalid.');
+    const transformResult = transformResponse.output;
+
+    if (!transformResult || !transformResult.gmailQueryString) {
+      throw new Error('AI failed to transform the query. The model response was empty, invalid, or did not contain a query string.');
     }
-    const transformedQuery = transformResult.output.gmailQueryString;
+    const transformedQuery = transformResult.gmailQueryString;
     console.log(`[queryEmailsFlow] AI-generated Gmail query: "${transformedQuery}"`);
 
     // STEP 2: Fetch emails from Gmail API using the transformed query.
@@ -195,18 +200,23 @@ const queryEmailsFlow = ai.defineFlow(
     console.log(`[queryEmailsFlow] Fetched ${emails.length} emails from Gmail. Now refining with AI.`);
 
 
-    // STEP 3: Use AI to refine and summarize the fetched emails.
-    const refineResult = await refineAndSummarizeEmailsPrompt({
-        query: flowInput.query,
-        emails: emails,
+    // STEP 3: Use AI to refine and summarize the fetched emails using explicit ai.generate().
+    const refineResponse = await ai.generate({
+        prompt: refineAndSummarizeEmailsPrompt,
+        input: {
+            query: flowInput.query,
+            emails: emails,
+        }
     });
+
+    const refineResult = refineResponse.output;
     
-    if (!refineResult || !refineResult.output) {
-        throw new Error("AI failed to refine and summarize the fetched emails. The model response was empty or invalid.");
+    if (!refineResult || !refineResult.refinedEmails) {
+        throw new Error("AI failed to refine and summarize the fetched emails. The model response was empty, invalid, or did not contain refined emails.");
     }
     
     // Filter for relevant emails and map to the final output schema.
-    const relevantEmails = refineResult.output.refinedEmails
+    const relevantEmails = refineResult.refinedEmails
       .filter(email => email.isRelevant)
       .map(email => ({
         id: email.id,
@@ -221,3 +231,4 @@ const queryEmailsFlow = ai.defineFlow(
     return { emailList: relevantEmails };
   }
 );
+
