@@ -1,7 +1,11 @@
-// Summarizes an email provided as input.
-
 'use server';
-
+/**
+ * @fileOverview A flow that summarizes a single email's content.
+ *
+ * - summarizeEmail - The primary exported function.
+ * - SummarizeEmailInput - The input type for the function.
+ * - SummarizeEmailOutput - The return type for the function.
+ */
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
@@ -16,7 +20,12 @@ const SummarizeEmailOutputSchema = z.object({
 export type SummarizeEmailOutput = z.infer<typeof SummarizeEmailOutputSchema>;
 
 export async function summarizeEmail(input: SummarizeEmailInput): Promise<SummarizeEmailOutput> {
-  return summarizeEmailFlow(input);
+  const response = await summarizeEmailFlow(input);
+  if (!response) {
+      console.error('[summarizeEmail] ERROR: The flow returned an undefined response.');
+      throw new Error('The AI failed to generate a summary for the email.');
+  }
+  return response;
 }
 
 const summarizeEmailPrompt = ai.definePrompt({
@@ -33,7 +42,10 @@ const summarizeEmailFlow = ai.defineFlow(
     outputSchema: SummarizeEmailOutputSchema,
   },
   async input => {
-    const response = await summarizeEmailPrompt(input);
+    const response = await ai.generate({
+        prompt: summarizeEmailPrompt,
+        input: input,
+    });
     
     if (!response || !response.output) {
       console.error('[summarizeEmailFlow] ERROR: The AI model failed to generate a summary. The response or its output was undefined.', response);

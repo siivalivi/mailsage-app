@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview A Genkit flow that uses AI to query a user's Gmail account.
@@ -16,7 +15,7 @@ import { fetchGmailMessages, FetchedEmailData } from '@/services/gmailService';
 
 // --- Public Input/Output Schemas ---
 
-export const QueryEmailsInputSchema = z.object({
+const QueryEmailsInputSchema = z.object({
   query: z.string().describe('The natural language query to search emails.'),
   accessToken: z
     .string()
@@ -39,7 +38,7 @@ const QueriedEmailAISummarySchema = z.object({
     ),
 });
 
-export const QueryEmailsOutputSchema = z.object({
+const QueryEmailsOutputSchema = z.object({
   emailList: z
     .array(QueriedEmailAISummarySchema)
     .describe(
@@ -55,6 +54,9 @@ export async function queryEmails(
 ): Promise<QueryEmailsOutput> {
   try {
     const result = await queryEmailsFlow(input);
+    if (!result) {
+        throw new Error('Flow returned no result.');
+    }
     return result;
   } catch (error: any) {
     console.error(
