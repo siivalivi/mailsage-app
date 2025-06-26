@@ -116,10 +116,20 @@ const RefineAndSummarizeOutputSchema = z.object({
   refinedEmails: z.array(RefinedEmailSchema),
 });
 
+// Define a strict schema for the email data coming from our service.
+const FetchedEmailDataSchema = z.object({
+  id: z.string(),
+  sender: z.string(),
+  subject: z.string(),
+  snippet: z.string(),
+  timestamp: z.number(),
+});
+
 
 const refineAndSummarizeEmailsPrompt = ai.definePrompt({
   name: 'refineAndSummarizeEmailsPrompt',
-  input: { schema: z.object({ query: z.string(), emails: z.array(z.any()) }) }, // Use z.any() for flexibility with FetchedEmailData
+  // Use the new, strict schema for the array of emails.
+  input: { schema: z.object({ query: z.string(), emails: z.array(FetchedEmailDataSchema) }) },
   output: { schema: RefineAndSummarizeOutputSchema },
   system: `You are an intelligent email processing agent. Your task is to review a list of emails fetched from Gmail based on a search query.
 For EACH email, you must perform two actions:
@@ -164,15 +174,15 @@ const queryEmailsFlow = ai.defineFlow(
       query: flowInput.query,
       currentDate: currentDateForLLM,
     });
-
-    const transformedQuery = transformResult.output?.gmailQueryString;
-    if (!transformedQuery) {
-      throw new Error('AI failed to transform the natural language query into a Gmail query string.');
+    
+    if (!transformResult || !transformResult.output) {
+      throw new Error('AI failed to transform the natural language query. The model response was empty or invalid.');
     }
+    const transformedQuery = transformResult.output.gmailQueryString;
     console.log(`[queryEmailsFlow] AI-generated Gmail query: "${transformedQuery}"`);
 
     // STEP 2: Fetch emails from Gmail API using the transformed query.
-    const emails = await fetchGmailMessages(
+    const emails: FetchedEmailData[] = await fetchGmailMessages(
       flowInput.accessToken,
       transformedQuery,
       20 // max results
@@ -191,8 +201,8 @@ const queryEmailsFlow = ai.defineFlow(
         emails: emails,
     });
     
-    if (!refineResult.output) {
-        throw new Error("AI failed to refine and summarize the fetched emails.");
+    if (!refineResult || !refineResult.output) {
+        throw new Error("AI failed to refine and summarize the fetched emails. The model response was empty or invalid.");
     }
     
     // Filter for relevant emails and map to the final output schema.
