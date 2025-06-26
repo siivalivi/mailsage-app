@@ -40,13 +40,38 @@ const QueriedEmailAISummarySchema = z.object({
 });
 
 const QueryEmailsOutputSchema = z.object({
-  emailList: z
-    .array(QueriedEmailAISummarySchema)
-    .describe(
-      'A list of emails, selected and summarized by AI based on the user query.'
-    ),
+  emailList: z.array(QueriedEmailAISummarySchema),
 });
 export type QueryEmailsOutput = z.infer<typeof QueryEmailsOutputSchema>;
+
+// --- Schemas for AI responses ---
+
+const GmailQuerySchema = z.object({
+  gmailQueryString: z.string().describe('The generated Gmail API query string.'),
+});
+
+const RefinedEmailSchema = z.object({
+  isRelevant: z
+    .boolean()
+    .describe(
+      'Set to true if the email is relevant to the original user query, otherwise false.'
+    ),
+  id: z.string().describe('The original Gmail message ID.'),
+  sender: z.string().describe('The original sender of the email.'),
+  subject: z.string().describe('The original subject of the email.'),
+  snippet: z.string().describe('The original snippet of the email.'),
+  timestamp: z.number().describe('The original timestamp of the email.'),
+  summary: z
+    .string()
+    .describe(
+      'A concise, AI-generated summary of the snippet, focusing on aspects relevant to the user query. If not relevant, this can be a brief note.'
+    ),
+});
+
+const RefineAndSummarizeOutputSchema = z.object({
+  refinedEmails: z.array(RefinedEmailSchema),
+});
+
 
 // --- Exported Function ---
 
@@ -81,89 +106,6 @@ export async function queryEmails(
   }
 }
 
-// --- Prompt 1: Transform Natural Language to Gmail Query ---
-
-const GmailQuerySchema = z.object({
-  gmailQueryString: z.string().describe('The generated Gmail API query string.'),
-});
-
-const transformQueryPrompt = ai.definePrompt({
-  name: 'transformQueryPrompt',
-  input: { schema: z.object({ query: z.string(), currentDate: z.string() }) },
-  output: { schema: GmailQuerySchema },
-  prompt: `You are a powerful text-processing utility. Your task is to convert a user's natural language email query into a valid, efficient Gmail API search query string. You MUST format your response as a JSON object that conforms to the provided schema.
-
-- Use the current date ("{{currentDate}}") as a reference for any relative date expressions (e.g., "last week", "month of may").
-- Translate keywords into Gmail search operators (e.g., from:, to:, subject:).
-- For financial queries mentioning "invoices," "bills," or "charges," broaden the search with terms like '(invoice OR receipt OR bill OR payment)'.
-
-User Query: "{{query}}"
-`,
-});
-
-// --- Prompt 2: Refine and Summarize Fetched Emails ---
-
-const RefinedEmailSchema = z.object({
-  isRelevant: z
-    .boolean()
-    .describe(
-      'Set to true if the email is relevant to the original user query, otherwise false.'
-    ),
-  id: z.string().describe('The original Gmail message ID.'),
-  sender: z.string().describe('The original sender of the email.'),
-  subject: z.string().describe('The original subject of the email.'),
-  snippet: z.string().describe('The original snippet of the email.'),
-  timestamp: z.number().describe('The original timestamp of the email.'),
-  summary: z
-    .string()
-    .describe(
-      'A concise, AI-generated summary of the snippet, focusing on aspects relevant to the user query. If not relevant, this can be a brief note.'
-    ),
-});
-
-const RefineAndSummarizeOutputSchema = z.object({
-  refinedEmails: z.array(RefinedEmailSchema),
-});
-
-const FetchedEmailDataSchema = z.object({
-  id: z.string(),
-  sender: z.string(),
-  subject: z.string(),
-  snippet: z.string(),
-  timestamp: z.number(),
-});
-
-const refineAndSummarizeEmailsPrompt = ai.definePrompt({
-  name: 'refineAndSummarizeEmailsPrompt',
-  input: {
-    schema: z.object({
-      query: z.string(),
-      emails: z.array(FetchedEmailDataSchema),
-    }),
-  },
-  output: { schema: RefineAndSummarizeOutputSchema },
-  prompt: `You are an intelligent email processing agent. Your task is to review a list of emails fetched from Gmail based on a search query.
-For EACH email, you must perform two actions:
-1.  Relevance Check: Determine if the email's content (snippet) is truly relevant to the user's original query.
-2.  Summarization: If the email is relevant, create a concise, informative summary of its snippet that directly addresses the user's query intent.
-Produce a JSON output containing a 'refinedEmails' array. For EACH email provided above, include an object in the array with the fields 'isRelevant', 'id', 'sender', 'subject', 'snippet', 'timestamp', and 'summary'.
-- Only include emails where 'isRelevant' is true in the final user-facing list.
-
-User's Original Query: "{{query}}"
-
-Here are the emails to process:
-{{#each emails}}
----
-Email ID: {{id}}
-From: {{sender}}
-Subject: {{subject}}
-Timestamp: {{timestamp}}
-Snippet: "{{snippet}}"
----
-{{/each}}
-`,
-});
-
 // --- Main Flow Definition ---
 
 const queryEmailsFlow = ai.defineFlow(
@@ -179,14 +121,22 @@ const queryEmailsFlow = ai.defineFlow(
       .padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
 
     // STEP 1: Transform natural language query to a Gmail API query string.
-    const transformResponse = await ai.generate({
-      prompt: transformQueryPrompt,
-      input: {
-        query: flowInput.query,
-        currentDate: currentDateForLLM,
-      },
-    });
+    console.log('[queryEmailsFlow] Step 1: Transforming natural language to Gmail query.');
+    
+    const transformPrompt = `You are a powerful text-processing utility. Your task is to convert a user's natural language email query into a valid, efficient Gmail API search query string. You MUST format your response as a JSON object that conforms to the provided schema.
 
+- Use the current date ("${currentDateForLLM}") as a reference for any relative date expressions (e.g., "last week", "month of may").
+- Translate keywords into Gmail search operators (e.g., from:, to:, subject:).
+- For financial queries mentioning "invoices," "bills," or "charges," broaden the search with terms like '(invoice OR receipt OR bill OR payment)'.
+
+User Query: "${flowInput.query}"
+`;
+
+    const transformResponse = await ai.generate({
+      prompt: transformPrompt,
+      output: { schema: GmailQuerySchema }
+    });
+    
     const transformResult = transformResponse.output;
 
     if (!transformResult || !transformResult.gmailQueryString) {
@@ -217,12 +167,34 @@ const queryEmailsFlow = ai.defineFlow(
     );
 
     // STEP 3: Use AI to refine and summarize the fetched emails.
+    console.log('[queryEmailsFlow] Step 3: Refining and summarizing fetched emails.');
+
+    const emailsToProcessString = emails.map(email => 
+`---
+Email ID: ${email.id}
+From: ${email.sender}
+Subject: ${email.subject}
+Timestamp: ${email.timestamp}
+Snippet: "${email.snippet}"
+---`
+    ).join('\n');
+
+    const refinePrompt = `You are an intelligent email processing agent. Your task is to review a list of emails fetched from Gmail based on a search query.
+For EACH email, you must perform two actions:
+1.  Relevance Check: Determine if the email's content (snippet) is truly relevant to the user's original query.
+2.  Summarization: If the email is relevant, create a concise, informative summary of its snippet that directly addresses the user's query intent.
+Produce a JSON output containing a 'refinedEmails' array. For EACH email provided, include an object in the array with the fields 'isRelevant', 'id', 'sender', 'subject', 'snippet', 'timestamp', and 'summary'.
+- Only include emails where 'isRelevant' is true in the final user-facing list.
+
+User's Original Query: "${flowInput.query}"
+
+Here are the emails to process:
+${emailsToProcessString}
+`;
+    
     const refineResponse = await ai.generate({
-      prompt: refineAndSummarizeEmailsPrompt,
-      input: {
-        query: flowInput.query,
-        emails: emails,
-      },
+      prompt: refinePrompt,
+      output: { schema: RefineAndSummarizeOutputSchema }
     });
 
     const refineResult = refineResponse.output;
