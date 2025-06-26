@@ -16,7 +16,7 @@ import { fetchGmailMessages, FetchedEmailData } from '@/services/gmailService';
 
 // --- Public Input/Output Schemas ---
 
-const QueryEmailsInputSchema = z.object({
+export const QueryEmailsInputSchema = z.object({
   query: z.string().describe('The natural language query to search emails.'),
   accessToken: z
     .string()
@@ -39,7 +39,7 @@ const QueriedEmailAISummarySchema = z.object({
     ),
 });
 
-const QueryEmailsOutputSchema = z.object({
+export const QueryEmailsOutputSchema = z.object({
   emailList: z
     .array(QueriedEmailAISummarySchema)
     .describe(
@@ -114,7 +114,6 @@ const RefineAndSummarizeOutputSchema = z.object({
   refinedEmails: z.array(RefinedEmailSchema),
 });
 
-// Define a strict schema for the email data coming from our service.
 const FetchedEmailDataSchema = z.object({
   id: z.string(),
   sender: z.string(),
