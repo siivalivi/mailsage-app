@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview A Genkit flow that uses AI to query a user's Gmail account.
@@ -15,7 +16,7 @@ import { fetchGmailMessages, FetchedEmailData } from '@/services/gmailService';
 
 // --- Public Input/Output Schemas ---
 
-export const QueryEmailsInputSchema = z.object({
+const QueryEmailsInputSchema = z.object({
   query: z.string().describe('The natural language query to search emails.'),
   accessToken: z
     .string()
@@ -38,7 +39,7 @@ const QueriedEmailAISummarySchema = z.object({
     ),
 });
 
-export const QueryEmailsOutputSchema = z.object({
+const QueryEmailsOutputSchema = z.object({
   emailList: z
     .array(QueriedEmailAISummarySchema)
     .describe(
