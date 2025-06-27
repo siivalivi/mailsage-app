@@ -147,3 +147,27 @@ graph TD
     *   **Service Call:** It uses the new search string and the `accessToken` to call `gmailService`, which fetches email metadata from the external Gmail API.
     *   **LLM Call 2:** It takes the email snippets and sends them back to Gemini for relevance filtering and summarization.
 5.  **Final Context (Server -> Client):** The flow returns the final, fully enriched **Context** containing a structured list of `QueriedEmail` objects. The Server Action passes this back to the `DashboardPage` on the client, which updates its state and displays the results.
+
+## Flexibility of MCP vs. Direct API Calls
+
+The core benefit of the MCP architecture is the **flexibility** gained by decoupling the client from the server's business logic.
+
+### The Inflexible Approach: Direct API Calls from the Client
+
+If our React components were to call the Google AI and Gmail APIs directly, the client would be:
+*   **Insecure:** The browser would have to manage the user's sensitive Google Access Token and the Google AI API Key, making them vulnerable to theft.
+*   **Rigid:** The client would be hard-coded to call specific versions of the Gmail and Gemini APIs. Any change to these external APIs would require updating, testing, and redeploying our client-side application.
+*   **Complex:** The client would need to contain all the orchestration logic (call AI for query -> call Gmail -> call AI for summary). This makes the client "heavy," harder to maintain, and prone to bugs.
+
+### The MCP Approach: Flexibility Through Abstraction
+
+By using MCP, we gain enormous flexibility:
+*   **The Client is Decoupled:** The client's only responsibility is to send a simple `query` string. It doesn't know or care how the server generates the results.
+*   **The Server "Protocol" is Flexible:** We can change the server-side logic at any time without affecting the client. For example, we could:
+    *   Swap `gemini-2.0-flash` for a more powerful model.
+    *   Add a database caching layer to reduce Gmail API calls.
+    *   Introduce a third AI step to categorize emails by urgency.
+    *   Add more data sources besides Gmail.
+*   **The Security is Centralized:** All credentials and complex logic are managed in one secure, server-side location.
+
+In short, MCP treats the complex, multi-step process of querying emails as a black box. The client provides input to the box, and the server is free to change the internal wiring of that box at any time, providing ultimate flexibility and security.
