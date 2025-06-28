@@ -9,9 +9,9 @@ jest.mock('@/contexts/AuthContext', () => ({
   useAuth: jest.fn(),
 }));
 
-// Mock lucide-react icons
+// Mock lucide-react icons. By providing a complete mock without `jest.requireActual`,
+// we prevent Jest from trying to parse the original ESM module, which was causing the error.
 jest.mock('lucide-react', () => ({
-  ...jest.requireActual('lucide-react'),
   Chrome: () => <svg data-testid="chrome-icon" />,
 }));
 
