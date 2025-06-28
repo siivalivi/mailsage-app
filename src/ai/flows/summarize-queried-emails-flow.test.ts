@@ -1,9 +1,4 @@
 
-import { summarizeQueriedEmails } from './summarize-queried-emails-flow';
-import type { SummarizeQueriedEmailsInput } from './summarize-queried-emails-flow';
-import { ai } from '@/ai/genkit';
-import { z } from 'zod';
-
 // The prompt function that will be mocked.
 const mockPrompt = jest.fn();
 
@@ -12,16 +7,22 @@ jest.mock('@/ai/genkit', () => ({
   ai: {
     // Mock defineFlow to return the flow's inner function for direct testing
     defineFlow: jest.fn((config, flowFunc) => flowFunc),
-    // Mock definePrompt to return our spy function
+    // Mock definePrompt to return our spy function, which is now defined above.
     definePrompt: jest.fn(() => mockPrompt),
   },
 }));
 
+// IMPORTANT: Now we import the modules that use the mock.
+// This must happen AFTER jest.mock is defined.
+import { summarizeQueriedEmails } from './summarize-queried-emails-flow';
+import type { SummarizeQueriedEmailsInput } from './summarize-queried-emails-flow';
+
+
 describe('summarizeQueriedEmails Flow', () => {
 
   beforeEach(() => {
-    // Clear mock history before each test
-    jest.clearAllMocks();
+    // Clear only our specific mock's history before each test for safety.
+    mockPrompt.mockClear();
   });
 
   it('should call the AI prompt with the correct data and return the overall summary', async () => {
