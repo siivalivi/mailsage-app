@@ -9,6 +9,13 @@ jest.mock('@/contexts/AuthContext', () => ({
   useAuth: jest.fn(),
 }));
 
+// Mock lucide-react icons
+jest.mock('lucide-react', () => ({
+  ...jest.requireActual('lucide-react'),
+  Chrome: () => <svg data-testid="chrome-icon" />,
+}));
+
+
 // Type assertion for the mocked hook
 const mockedUseAuth = useAuth as jest.Mock;
 
@@ -26,6 +33,7 @@ describe('SignInButton', () => {
     // Assert: Check if the button is in the document and has the correct text
     const buttonElement = screen.getByRole('button', { name: /sign in with google/i });
     expect(buttonElement).toBeInTheDocument();
+    expect(screen.getByTestId('chrome-icon')).toBeInTheDocument();
   });
 
   it('is disabled when loading is true', () => {
