@@ -4,11 +4,11 @@ import '@testing-library/jest-dom';
 import EmailListItem from './EmailListItem';
 import type { Email } from '@/types';
 
-// Mock next/navigation
-const mockRouterPush = jest.fn();
+// We no longer need to mock `useRouter` as the component doesn't use it directly.
+// The `next/link` behavior is trusted, and its dependencies are mocked by Next/Jest.
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: mockRouterPush,
+    push: jest.fn(),
   }),
 }));
 
@@ -52,9 +52,8 @@ describe('EmailListItem', () => {
 
   beforeEach(() => {
     // Clear mocks before each test
-    mockRouterPush.mockClear();
     localStorageMock.clear();
-    jest.spyOn(window.localStorage, 'setItem');
+    jest.spyOn(window.localStorage, 'setItem').mockClear(); // Also clear the spy's call history
   });
 
   it('renders email details correctly', () => {
@@ -62,7 +61,6 @@ describe('EmailListItem', () => {
 
     expect(screen.getByText('Important Update')).toBeInTheDocument();
     expect(screen.getByText('test@example.com')).toBeInTheDocument();
-    // Check for formatted date - toLocaleDateString is tricky, so let's just check for part of it
     expect(screen.getByText(/January 1, 2023/i)).toBeInTheDocument();
     expect(screen.getByText(/This is a summary./)).toBeInTheDocument();
   });
@@ -77,37 +75,22 @@ describe('EmailListItem', () => {
     expect(screen.queryByText('New')).not.toBeInTheDocument();
   });
 
-  it('navigates and saves to localStorage on click', () => {
+  it('saves to localStorage on click and has correct href', () => {
     render(<EmailListItem email={mockEmail} />);
 
     const item = screen.getByRole('link');
+    
+    // Verify the link is pointing to the correct URL
+    expect(item).toHaveAttribute('href', `/dashboard/email/${mockEmail.id}`);
+
+    // Simulate a user click
     fireEvent.click(item);
 
-    // Check localStorage
+    // Check that our specific logic (saving to localStorage) was executed exactly once
     expect(window.localStorage.setItem).toHaveBeenCalledWith(
       `email-${mockEmail.id}`,
       JSON.stringify(mockEmail)
     );
-
-    // Check router push
-    expect(mockRouterPush).toHaveBeenCalledWith(`/dashboard/email/${mockEmail.id}`);
-  });
-
-  it('is keyboard accessible', () => {
-    render(<EmailListItem email={mockEmail} />);
-    
-    const item = screen.getByRole('link');
-    item.focus();
-    
-    // Pressing Enter should trigger the click handler
-    fireEvent.keyDown(item, { key: 'Enter', code: 'Enter' });
-
-    expect(mockRouterPush).toHaveBeenCalledTimes(1);
     expect(window.localStorage.setItem).toHaveBeenCalledTimes(1);
-
-    // Pressing Space should also trigger it
-    fireEvent.keyDown(item, { key: ' ', code: 'Space' });
-    expect(mockRouterPush).toHaveBeenCalledTimes(2);
-    expect(window.localStorage.setItem).toHaveBeenCalledTimes(2);
   });
 });

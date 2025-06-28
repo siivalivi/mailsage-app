@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -6,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import type { Email } from '@/types';
 import { ArrowRight, CalendarDays, UserCircle } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 
 interface EmailListItemProps {
   email: Email;
@@ -23,9 +21,9 @@ function formatDate(timestamp: number): string {
 }
 
 export default function EmailListItem({ email }: EmailListItemProps) {
-  const router = useRouter();
-
   const handleItemClick = () => {
+    // The navigation is handled by the Link component's href.
+    // This handler is now only responsible for the side effect of saving to localStorage.
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(`email-${email.id}`, JSON.stringify(email));
@@ -34,23 +32,15 @@ export default function EmailListItem({ email }: EmailListItemProps) {
         // Potentially show a toast to the user if localStorage is full or disabled
       }
     }
-    router.push(`/dashboard/email/${email.id}`);
   };
 
   return (
-    // By separating onClick and onKeyDown, and calling preventDefault in onKeyDown,
-    // we prevent a single keyboard press from firing the handler twice.
-    <div
+    // Replaced the div with a proper Next.js Link component.
+    // This is semantically correct and handles keyboard accessibility automatically.
+    <Link
+      href={`/dashboard/email/${email.id}`}
       onClick={handleItemClick}
-      className="block group outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-lg h-full cursor-pointer"
-      role="link" // ARIA role for accessibility
-      tabIndex={0} // Make it focusable
-      onKeyDown={(e) => { 
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault(); // Prevents the key press from also triggering a 'click' event
-          handleItemClick();
-        }
-      }}
+      className="block group outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-lg h-full"
     >
       <Card className="hover:shadow-lg transition-shadow duration-200 ease-in-out group-hover:border-primary h-full">
         <CardHeader>
@@ -78,6 +68,6 @@ export default function EmailListItem({ email }: EmailListItemProps) {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </Link>
   );
 }
