@@ -25,11 +25,7 @@ function formatDate(timestamp: number): string {
 export default function EmailListItem({ email }: EmailListItemProps) {
   const router = useRouter();
 
-  const handleItemClick = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
-    // Prevent default if the click is on something that already navigates,
-    // though Link component handles its own navigation.
-    // e.preventDefault(); 
-    
+  const handleItemClick = () => {
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(`email-${email.id}`, JSON.stringify(email));
@@ -42,16 +38,19 @@ export default function EmailListItem({ email }: EmailListItemProps) {
   };
 
   return (
-    // Using a div with onClick for localStorage interaction before navigation.
-    // The Link component is removed, and navigation is handled by router.push.
-    // This gives more control over the click event.
-    // Alternatively, wrap Link with div and stopPropagation if needed, but this is simpler.
+    // By separating onClick and onKeyDown, and calling preventDefault in onKeyDown,
+    // we prevent a single keyboard press from firing the handler twice.
     <div
       onClick={handleItemClick}
       className="block group outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-lg h-full cursor-pointer"
       role="link" // ARIA role for accessibility
       tabIndex={0} // Make it focusable
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleItemClick(e as any); }} // Keyboard accessibility
+      onKeyDown={(e) => { 
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault(); // Prevents the key press from also triggering a 'click' event
+          handleItemClick();
+        }
+      }}
     >
       <Card className="hover:shadow-lg transition-shadow duration-200 ease-in-out group-hover:border-primary h-full">
         <CardHeader>

@@ -79,8 +79,8 @@ describe('EmailView', () => {
     const summarizeButton = screen.getByRole('button', { name: /Summarize/i });
     fireEvent.click(summarizeButton);
 
-    // Check for loading state
-    expect(screen.getByTestId('loader-icon')).toBeInTheDocument();
+    // Check for loading state. Use getAllByTestId because there might be more than one loader icon.
+    expect(screen.getAllByTestId('loader-icon').length).toBeGreaterThan(0);
     expect(summarizeButton).toBeDisabled();
 
     // Wait for the async actions to complete
