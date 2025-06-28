@@ -1,41 +1,32 @@
-
 // This file uses a robust mocking strategy to test a Genkit flow
-// that relies on `ai.definePrompt`.
+// that relies on `ai.definePrompt`. The key is to place the jest.mock
+// call BEFORE importing the module under test.
 
-import { summarizeQueriedEmails } from './summarize-queried-emails-flow';
-import type { SummarizeQueriedEmailsInput } from './summarize-queried-emails-flow';
-import { ai } from '@/ai/genkit';
+// Step 1: Create a mock function we can control.
+const mockPromptFunction = jest.fn();
 
-// 1. Mock the entire genkit module. This is hoisted by Jest.
+// Step 2: Mock the entire genkit module. Inside the factory,
+// make `definePrompt` return our controllable mock function.
+// This factory is executed by Jest BEFORE any imports in the file are processed.
 jest.mock('@/ai/genkit', () => ({
   ai: {
-    // We want the real logic of our flow, so we mock defineFlow
-    // to just return the inner function.
+    // Mock defineFlow to just return the inner function, so we test its logic.
     defineFlow: jest.fn((config, flowFunc) => flowFunc),
-    // We provide a placeholder mock for definePrompt. We will control
-    // what this mock returns in our tests.
-    definePrompt: jest.fn(),
+    // Mock definePrompt to return our spy function.
+    definePrompt: jest.fn(() => mockPromptFunction),
   },
 }));
 
-// 2. Create typed references to the mocked functions.
-const mockedDefinePrompt = ai.definePrompt as jest.Mock;
-
-// This will be our spy function, representing the actual prompt the AI would run.
-const mockPromptFunction = jest.fn();
+// Step 3: Now that the mock is in place, import the code we want to test.
+// When this file is parsed, it will use our mocked `ai` object.
+import { summarizeQueriedEmails } from './summarize-queried-emails-flow';
+import type { SummarizeQueriedEmailsInput } from './summarize-queried-emails-flow';
 
 
 describe('summarizeQueriedEmails Flow', () => {
-
   beforeEach(() => {
-    // 3. Before each test, reset all mocks to ensure a clean slate.
-    mockedDefinePrompt.mockClear();
+    // Before each test, clear the history of our spy function.
     mockPromptFunction.mockClear();
-
-    // 4. Crucially, we tell our mocked `definePrompt` to return our
-    // controllable spy function. This is how we can check if the prompt
-    // was called later.
-    mockedDefinePrompt.mockReturnValue(mockPromptFunction);
   });
 
   it('should call the AI prompt with the correct data and return the overall summary', async () => {
@@ -48,7 +39,7 @@ describe('summarizeQueriedEmails Flow', () => {
     };
     const expectedSummary = 'This is the overall summary of emails A and B.';
     
-    // We configure our prompt spy to return a resolved promise with the expected output.
+    // Configure our prompt spy to return a resolved promise with the expected output.
     mockPromptFunction.mockResolvedValue({
       output: { overallSummary: expectedSummary },
     });
@@ -57,9 +48,8 @@ describe('summarizeQueriedEmails Flow', () => {
     const result = await summarizeQueriedEmails(input);
 
     // Assert
-    // Check that definePrompt was called once to set up the flow.
-    expect(mockedDefinePrompt).toHaveBeenCalledTimes(1);
     // Check that our prompt spy was called once with the correct input.
+    expect(mockPromptFunction).toHaveBeenCalledTimes(1);
     expect(mockPromptFunction).toHaveBeenCalledWith(input);
     // Check that the final result is correct.
     expect(result.overallSummary).toBe(expectedSummary);
