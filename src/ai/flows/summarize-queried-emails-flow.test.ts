@@ -2,30 +2,29 @@
 // that relies on `ai.definePrompt`. The key is to place the jest.mock
 // call BEFORE importing the module under test.
 
-// Step 1: Create a mock function we can control.
+// Step 1: This is the function that our mocked `definePrompt` will return.
+// We can control its behavior in each test.
 const mockPromptFunction = jest.fn();
 
-// Step 2: Mock the entire genkit module. Inside the factory,
-// make `definePrompt` return our controllable mock function.
-// This factory is executed by Jest BEFORE any imports in the file are processed.
+// Step 2: Mock the genkit module BEFORE importing the file under test.
 jest.mock('@/ai/genkit', () => ({
   ai: {
-    // Mock defineFlow to just return the inner function, so we test its logic.
+    // Mock defineFlow to just return the inner function for direct logic testing.
     defineFlow: jest.fn((config, flowFunc) => flowFunc),
-    // Mock definePrompt to return our spy function.
+    // Mock definePrompt to return our controllable spy function.
     definePrompt: jest.fn(() => mockPromptFunction),
   },
 }));
 
-// Step 3: Now that the mock is in place, import the code we want to test.
-// When this file is parsed, it will use our mocked `ai` object.
+// Step 3: Now, import the code we want to test. When Jest processes this file,
+// it will use our mock from above instead of the real '@/ai/genkit'.
 import { summarizeQueriedEmails } from './summarize-queried-emails-flow';
 import type { SummarizeQueriedEmailsInput } from './summarize-queried-emails-flow';
 
 
 describe('summarizeQueriedEmails Flow', () => {
   beforeEach(() => {
-    // Before each test, clear the history of our spy function.
+    // Before each test, clear the history of our spy function and reset any implementations.
     mockPromptFunction.mockClear();
   });
 
@@ -39,7 +38,7 @@ describe('summarizeQueriedEmails Flow', () => {
     };
     const expectedSummary = 'This is the overall summary of emails A and B.';
     
-    // Configure our prompt spy to return a resolved promise with the expected output.
+    // Configure our mock prompt to return a resolved promise with the expected output for this specific test.
     mockPromptFunction.mockResolvedValue({
       output: { overallSummary: expectedSummary },
     });
