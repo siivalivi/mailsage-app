@@ -72,7 +72,10 @@ const summarizeQueriedEmailsFlow = ai.defineFlow(
       return { overallSummary: 'No email summaries were provided to synthesize.' };
     }
     
-    const response = await prompt(input);
+    const response = await ai.generate({
+      prompt: prompt,
+      input: input,
+    });
 
     if (!response || !response.output) {
       console.error('[summarizeQueriedEmailsFlow] ERROR: The AI model failed to generate an overall summary. The response or its output was undefined.', response);

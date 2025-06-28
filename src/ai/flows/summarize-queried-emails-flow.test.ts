@@ -1,34 +1,29 @@
-// This file uses a robust mocking strategy to test a Genkit flow
-// that relies on `ai.definePrompt`. The key is to place the jest.mock
-// call BEFORE importing the module under test.
 
-// Step 1: This is the function that our mocked `definePrompt` will return.
-// We can control its behavior in each test.
-const mockPromptFunction = jest.fn();
+import { summarizeQueriedEmails } from './summarize-queried-emails-flow';
+import type { SummarizeQueriedEmailsInput } from './summarize-queried-emails-flow';
+import { ai } from '@/ai/genkit';
 
-// Step 2: Mock the genkit module BEFORE importing the file under test.
+// Mock the AI module to avoid actual API calls.
 jest.mock('@/ai/genkit', () => ({
   ai: {
-    // Mock defineFlow to just return the inner function for direct logic testing.
+    generate: jest.fn(),
+    // Mock defineFlow and definePrompt to just return their inner function or config object.
+    // This isolates our test to the flow's logic, not the Genkit framework itself.
     defineFlow: jest.fn((config, flowFunc) => flowFunc),
-    // Mock definePrompt to return our controllable spy function.
-    definePrompt: jest.fn(() => mockPromptFunction),
+    definePrompt: jest.fn((config) => config), // Return the config object for inspection if needed.
   },
 }));
 
-// Step 3: Now, import the code we want to test. When Jest processes this file,
-// it will use our mock from above instead of the real '@/ai/genkit'.
-import { summarizeQueriedEmails } from './summarize-queried-emails-flow';
-import type { SummarizeQueriedEmailsInput } from './summarize-queried-emails-flow';
-
+// Create a typed mock for the `generate` function for type safety.
+const mockedAIGenerate = ai.generate as jest.Mock;
 
 describe('summarizeQueriedEmails Flow', () => {
   beforeEach(() => {
-    // Before each test, clear the history of our spy function and reset any implementations.
-    mockPromptFunction.mockClear();
+    // Clear mock history before each test.
+    mockedAIGenerate.mockClear();
   });
 
-  it('should call the AI prompt with the correct data and return the overall summary', async () => {
+  it('should call the AI with the correct data and return the overall summary', async () => {
     // Arrange
     const input: SummarizeQueriedEmailsInput = {
       queriedEmails: [
@@ -38,8 +33,8 @@ describe('summarizeQueriedEmails Flow', () => {
     };
     const expectedSummary = 'This is the overall summary of emails A and B.';
     
-    // Configure our mock prompt to return a resolved promise with the expected output for this specific test.
-    mockPromptFunction.mockResolvedValue({
+    // Configure the mock AI response for this test.
+    mockedAIGenerate.mockResolvedValue({
       output: { overallSummary: expectedSummary },
     });
 
@@ -47,10 +42,13 @@ describe('summarizeQueriedEmails Flow', () => {
     const result = await summarizeQueriedEmails(input);
 
     // Assert
-    // Check that our prompt spy was called once with the correct input.
-    expect(mockPromptFunction).toHaveBeenCalledTimes(1);
-    expect(mockPromptFunction).toHaveBeenCalledWith(input);
-    // Check that the final result is correct.
+    expect(mockedAIGenerate).toHaveBeenCalledTimes(1);
+    // Check that the input passed to the AI generator was the same as our flow input.
+    expect(mockedAIGenerate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: input,
+      })
+    );
     expect(result.overallSummary).toBe(expectedSummary);
   });
 
@@ -64,9 +62,8 @@ describe('summarizeQueriedEmails Flow', () => {
     const result = await summarizeQueriedEmails(input);
 
     // Assert
-    // The AI prompt should NOT be called for an empty list.
-    expect(mockPromptFunction).not.toHaveBeenCalled();
-    // A specific user-friendly message should be returned.
+    // The AI should NOT be called for an empty list.
+    expect(mockedAIGenerate).not.toHaveBeenCalled();
     expect(result.overallSummary).toBe('No email summaries were provided to synthesize.');
   });
 
@@ -75,7 +72,7 @@ describe('summarizeQueriedEmails Flow', () => {
     const input: SummarizeQueriedEmailsInput = {
       queriedEmails: [{ sender: 'a@a.com', subject: 'Subj A', summary: 'Summary A' }],
     };
-    mockPromptFunction.mockResolvedValue({ output: null }); // Simulate AI failure
+    mockedAIGenerate.mockResolvedValue({ output: null }); // Simulate AI failure.
 
     // Act & Assert
     await expect(summarizeQueriedEmails(input)).rejects.toThrow(
@@ -89,7 +86,7 @@ describe('summarizeQueriedEmails Flow', () => {
       queriedEmails: [{ sender: 'a@a.com', subject: 'Subj A', summary: 'Summary A' }],
     };
     const aiError = new Error('AI service unavailable');
-    mockPromptFunction.mockRejectedValue(aiError);
+    mockedAIGenerate.mockRejectedValue(aiError);
     
     // Act & Assert
     await expect(summarizeQueriedEmails(input)).rejects.toThrow(aiError);
