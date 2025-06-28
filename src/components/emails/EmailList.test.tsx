@@ -12,9 +12,9 @@ jest.mock('./EmailListItem', () => {
   };
 });
 
+// Correctly mock only the specific icon being used, without trying to load the real library.
 jest.mock('lucide-react', () => ({
-  ...jest.requireActual('lucide-react'), // Import actual lucide-react library
-  Inbox: () => <svg data-testid="inbox-icon" />, // Mock the Inbox icon specifically
+  Inbox: () => <svg data-testid="inbox-icon" />,
 }));
 
 
@@ -27,8 +27,8 @@ describe('EmailList', () => {
   it('shows skeleton loaders when isLoading is true', () => {
     render(<EmailList emails={[]} isLoading={true} />);
     
-    // The component should render 4 skeleton cards, each with multiple skeleton elements
-    // We check for the aria-label="loading" we added to the Skeleton component
+    // The component should render skeleton elements.
+    // We check for the aria-label="loading" we added to the Skeleton component.
     const skeletons = screen.getAllByLabelText('loading');
     expect(skeletons.length).toBeGreaterThan(0);
 

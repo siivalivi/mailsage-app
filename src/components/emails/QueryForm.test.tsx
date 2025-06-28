@@ -24,8 +24,14 @@ jest.mock('@/hooks/use-toast');
 const mockedUseToast = useToast as jest.Mock;
 const mockToast = jest.fn();
 
-// Mocking the queryEmails server action
-jest.mock('@/ai/flows/query-emails');
+// Mocking the queryEmails server action with a factory function.
+// This is the key fix: it prevents Jest from ever trying to parse the
+// actual server action file and its problematic dependencies (like 'yaml').
+jest.mock('@/ai/flows/query-emails', () => ({
+  queryEmails: jest.fn(),
+}));
+
+// Now that the module is mocked, we can get a reference to the mocked function.
 const mockedQueryEmails = queryEmails as jest.Mock;
 
 
