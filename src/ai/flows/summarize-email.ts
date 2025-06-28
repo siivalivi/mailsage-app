@@ -7,7 +7,7 @@
  * - SummarizeEmailOutput - The return type for the function.
  */
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z} from 'zod';
 
 const SummarizeEmailInputSchema = z.object({
   emailContent: z.string().describe('The complete content of the email to summarize.'),

@@ -74,5 +74,3 @@ describe('summarizeEmail Flow', () => {
     await expect(summarizeEmail({ emailContent })).rejects.toThrow(aiError);
   });
 });
-
-    

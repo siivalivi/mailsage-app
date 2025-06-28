@@ -9,7 +9,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 
 const SummarizeQueriedEmailsInputSchema = z.object({
   queriedEmails: z // These are emails already processed by queryEmails flow
