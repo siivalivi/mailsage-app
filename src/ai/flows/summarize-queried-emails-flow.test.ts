@@ -1,14 +1,16 @@
 
 // The prompt function that will be mocked.
-const mockPrompt = jest.fn();
+const mockPromptImplementation = jest.fn();
 
-// Mock the genkit module to control AI calls
+// Mock the genkit module to control AI calls.
+// This mock is "hoisted" by Jest to run before imports.
 jest.mock('@/ai/genkit', () => ({
   ai: {
     // Mock defineFlow to return the flow's inner function for direct testing
     defineFlow: jest.fn((config, flowFunc) => flowFunc),
-    // Mock definePrompt to return our spy function, which is now defined above.
-    definePrompt: jest.fn(() => mockPrompt),
+    // Mock definePrompt to return our controllable spy function.
+    // This works because mockPromptImplementation is defined before this mock runs.
+    definePrompt: jest.fn(() => mockPromptImplementation),
   },
 }));
 
@@ -21,8 +23,8 @@ import type { SummarizeQueriedEmailsInput } from './summarize-queried-emails-flo
 describe('summarizeQueriedEmails Flow', () => {
 
   beforeEach(() => {
-    // Clear only our specific mock's history before each test for safety.
-    mockPrompt.mockClear();
+    // Clear our mock's history before each test.
+    mockPromptImplementation.mockClear();
   });
 
   it('should call the AI prompt with the correct data and return the overall summary', async () => {
@@ -34,7 +36,7 @@ describe('summarizeQueriedEmails Flow', () => {
       ],
     };
     const expectedSummary = 'This is the overall summary of emails A and B.';
-    mockPrompt.mockResolvedValue({
+    mockPromptImplementation.mockResolvedValue({
       output: { overallSummary: expectedSummary },
     });
 
@@ -43,9 +45,9 @@ describe('summarizeQueriedEmails Flow', () => {
 
     // Assert
     // Check that the prompt was called once
-    expect(mockPrompt).toHaveBeenCalledTimes(1);
+    expect(mockPromptImplementation).toHaveBeenCalledTimes(1);
     // Check that the prompt was called with the correct input data
-    expect(mockPrompt).toHaveBeenCalledWith(input);
+    expect(mockPromptImplementation).toHaveBeenCalledWith(input);
     // Check that the final result is correct
     expect(result.overallSummary).toBe(expectedSummary);
   });
@@ -61,7 +63,7 @@ describe('summarizeQueriedEmails Flow', () => {
 
     // Assert
     // The AI prompt should NOT be called for an empty list
-    expect(mockPrompt).not.toHaveBeenCalled();
+    expect(mockPromptImplementation).not.toHaveBeenCalled();
     // A specific user-friendly message should be returned
     expect(result.overallSummary).toBe('No email summaries were provided to synthesize.');
   });
@@ -71,7 +73,7 @@ describe('summarizeQueriedEmails Flow', () => {
     const input: SummarizeQueriedEmailsInput = {
       queriedEmails: [{ sender: 'a@a.com', subject: 'Subj A', summary: 'Summary A' }],
     };
-    mockPrompt.mockResolvedValue({ output: null }); // Simulate AI failure
+    mockPromptImplementation.mockResolvedValue({ output: null }); // Simulate AI failure
 
     // Act & Assert
     await expect(summarizeQueriedEmails(input)).rejects.toThrow(
@@ -85,7 +87,7 @@ describe('summarizeQueriedEmails Flow', () => {
       queriedEmails: [{ sender: 'a@a.com', subject: 'Subj A', summary: 'Summary A' }],
     };
     const aiError = new Error('AI service unavailable');
-    mockPrompt.mockRejectedValue(aiError);
+    mockPromptImplementation.mockRejectedValue(aiError);
     
     // Act & Assert
     await expect(summarizeQueriedEmails(input)).rejects.toThrow(aiError);
