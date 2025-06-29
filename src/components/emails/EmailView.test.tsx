@@ -5,6 +5,7 @@ import EmailView from './EmailView';
 import type { Email } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { summarizeEmail } from '@/ai/flows/summarize-email';
+import { draftReply } from '@/ai/flows/draft-reply';
 
 // --- Mocks ---
 
@@ -13,11 +14,17 @@ jest.mock('@/hooks/use-toast');
 const mockedUseToast = useToast as jest.Mock;
 const mockToast = jest.fn();
 
-// Mocking the summarizeEmail server action
+// Mocking the server actions
 jest.mock('@/ai/flows/summarize-email', () => ({
   summarizeEmail: jest.fn(),
 }));
 const mockedSummarizeEmail = summarizeEmail as jest.Mock;
+
+jest.mock('@/ai/flows/draft-reply', () => ({
+  draftReply: jest.fn(),
+  ReplyToneSchema: { options: ['polite', 'formal', 'casual', 'direct', 'friendly'] },
+}));
+const mockedDraftReply = draftReply as jest.Mock;
 
 // Mocking lucide-react icons
 jest.mock('lucide-react', () => ({
@@ -27,6 +34,8 @@ jest.mock('lucide-react', () => ({
   CalendarDays: () => <svg data-testid="calendar-icon" />,
   UserCircle: () => <svg data-testid="user-icon" />,
   Sparkles: () => <svg data-testid="sparkles-icon" />,
+  PenSquare: () => <svg data-testid="pen-square-icon" />,
+  ClipboardCopy: () => <svg data-testid="clipboard-copy-icon" />,
 }));
 
 
@@ -49,87 +58,145 @@ describe('EmailView', () => {
     mockedUseToast.mockReturnValue({ toast: mockToast });
   });
 
-  it('renders email details correctly', () => {
-    render(<EmailView email={mockEmail} />);
-    
-    expect(screen.getByText('Email Subject')).toBeInTheDocument();
-    expect(screen.getByText(/From: sender@example.com/)).toBeInTheDocument();
-    expect(screen.getByText(/Date: January 1, 2023/)).toBeInTheDocument();
-    expect(screen.getByText('This is the email body.')).toBeInTheDocument();
-  });
-
-  it('shows a placeholder when no summary is present', () => {
-    render(<EmailView email={mockEmail} />);
-    expect(screen.getByText("No summary available. Click 'Summarize' to generate one.")).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Summarize/i })).toBeInTheDocument();
-  });
-
-  it('displays an existing summary and shows "Re-Summarize"', () => {
-    render(<EmailView email={mockEmailWithSummary} />);
-    expect(screen.getByText('Initial summary.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Re-Summarize/i })).toBeInTheDocument();
-  });
-
-  it('calls summarizeEmail flow, shows loading state, and updates the summary on click', async () => {
-    const newSummary = 'This is the new AI summary.';
-    mockedSummarizeEmail.mockResolvedValue({ summary: newSummary });
-
-    render(<EmailView email={mockEmail} />);
-    
-    const summarizeButton = screen.getByRole('button', { name: /Summarize/i });
-    fireEvent.click(summarizeButton);
-
-    // Check for loading state. Use getAllByTestId because there might be more than one loader icon.
-    expect(screen.getAllByTestId('loader-icon').length).toBeGreaterThan(0);
-    expect(summarizeButton).toBeDisabled();
-
-    // Wait for the async actions to complete
-    await waitFor(() => {
-      expect(mockedSummarizeEmail).toHaveBeenCalledWith({ emailContent: mockEmail.body });
+  describe('Core Display and Summarization', () => {
+    it('renders email details correctly', () => {
+      render(<EmailView email={mockEmail} />);
+      
+      expect(screen.getByText('Email Subject')).toBeInTheDocument();
+      expect(screen.getByText(/From: sender@example.com/)).toBeInTheDocument();
+      expect(screen.getByText(/Date: January 1, 2023/)).toBeInTheDocument();
+      expect(screen.getByText('This is the email body.')).toBeInTheDocument();
     });
 
-    // Check that the summary is updated on screen
-    expect(await screen.findByText(newSummary)).toBeInTheDocument();
-    
-    // Check that the button is enabled again and text has changed
-    expect(screen.getByRole('button', { name: /Re-Summarize/i })).toBeEnabled();
-    
-    // Check for success toast
-    expect(mockToast).toHaveBeenCalledWith({
-      title: 'Email Summarized',
-      description: 'The summary has been generated successfully.',
+    it('shows a placeholder when no summary is present', () => {
+      render(<EmailView email={mockEmail} />);
+      expect(screen.getByText("No summary available. Click 'Summarize' to generate one.")).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Summarize/i })).toBeInTheDocument();
+    });
+
+    it('displays an existing summary and shows "Re-Summarize"', () => {
+      render(<EmailView email={mockEmailWithSummary} />);
+      expect(screen.getByText('Initial summary.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Re-Summarize/i })).toBeInTheDocument();
+    });
+
+    it('calls summarizeEmail flow, shows loading state, and updates the summary on click', async () => {
+      const newSummary = 'This is the new AI summary.';
+      mockedSummarizeEmail.mockResolvedValue({ summary: newSummary });
+
+      render(<EmailView email={mockEmail} />);
+      
+      const summarizeButton = screen.getByRole('button', { name: /Summarize/i });
+      fireEvent.click(summarizeButton);
+
+      expect(summarizeButton).toBeDisabled();
+      expect(screen.getAllByTestId('loader-icon').length).toBeGreaterThan(0);
+
+      await waitFor(() => {
+        expect(mockedSummarizeEmail).toHaveBeenCalledWith({ emailContent: mockEmail.body });
+      });
+
+      expect(await screen.findByText(newSummary)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Re-Summarize/i })).toBeEnabled();
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Email Summarized',
+        description: 'The summary has been generated successfully.',
+      });
+    });
+
+    it('handles summarization failure and shows an error toast', async () => {
+      const error = new Error('AI summarization failed');
+      mockedSummarizeEmail.mockRejectedValue(error);
+
+      render(<EmailView email={mockEmail} />);
+      
+      const summarizeButton = screen.getByRole('button', { name: /Summarize/i });
+      fireEvent.click(summarizeButton);
+
+      await waitFor(() => {
+        expect(mockedSummarizeEmail).toHaveBeenCalled();
+      });
+
+      expect(mockToast).toHaveBeenCalledWith({
+        variant: 'destructive',
+        title: 'Summarization Failed',
+        description: 'AI summarization failed',
+      });
+      expect(screen.getByText("No summary available. Click 'Summarize' to generate one.")).toBeInTheDocument();
+      expect(summarizeButton).toBeEnabled();
+    });
+
+    it('disables the summarize button if the email body is empty', () => {
+      render(<EmailView email={{ ...mockEmail, body: '' }} />);
+      const summarizeButton = screen.getByRole('button', { name: /Summarize/i });
+      expect(summarizeButton).toBeDisabled();
     });
   });
 
-  it('handles summarization failure and shows an error toast', async () => {
-    const error = new Error('AI summarization failed');
-    mockedSummarizeEmail.mockRejectedValue(error);
-
-    render(<EmailView email={mockEmail} />);
-    
-    const summarizeButton = screen.getByRole('button', { name: /Summarize/i });
-    fireEvent.click(summarizeButton);
-
-    // Wait for async actions
-    await waitFor(() => {
-      expect(mockedSummarizeEmail).toHaveBeenCalled();
+  describe('Reply Generation', () => {
+    it('renders the reply generation card with correct icons', () => {
+      render(<EmailView email={mockEmail} />);
+      expect(screen.getByText('Generate Reply')).toBeInTheDocument();
+      expect(screen.getByTestId('pen-square-icon')).toBeInTheDocument();
+      expect(screen.getByRole('combobox')).toBeInTheDocument(); // The select trigger for tone
+      expect(screen.getByRole('button', { name: /Generate Draft/i })).toBeInTheDocument();
     });
 
-    // Check for error toast
-    expect(mockToast).toHaveBeenCalledWith({
-      variant: 'destructive',
-      title: 'Summarization Failed',
-      description: 'AI summarization failed',
+    it('calls draftReply on button click, shows loading, and updates UI', async () => {
+      const draftText = 'This is a polite draft reply.';
+      mockedDraftReply.mockResolvedValue({ reply: draftText });
+
+      render(<EmailView email={mockEmail} />);
+
+      const generateButton = screen.getByRole('button', { name: /Generate Draft/i });
+      fireEvent.click(generateButton);
+
+      // Check for loading state
+      expect(generateButton).toBeDisabled();
+      expect(screen.getByDisplayValue('Generating draft...')).toBeInTheDocument();
+      expect(screen.getAllByTestId('loader-icon').length).toBeGreaterThan(0);
+
+      // Wait for async actions
+      await waitFor(() => {
+        expect(mockedDraftReply).toHaveBeenCalledWith({
+          emailContent: mockEmail.body,
+          replyTone: 'polite', // default tone
+        });
+      });
+
+      // Check for updated UI
+      expect(await screen.findByDisplayValue(draftText)).toBeInTheDocument();
+      expect(generateButton).toBeEnabled();
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Reply Drafted' })
+      );
     });
 
-    // Ensure the initial state is preserved
-    expect(screen.getByText("No summary available. Click 'Summarize' to generate one.")).toBeInTheDocument();
-    expect(summarizeButton).toBeEnabled();
-  });
+    it('handles draft generation failure and shows an error toast', async () => {
+      const error = new Error('AI drafting failed');
+      mockedDraftReply.mockRejectedValue(error);
 
-  it('disables the summarize button if the email body is empty', () => {
-    render(<EmailView email={{ ...mockEmail, body: '' }} />);
-    const summarizeButton = screen.getByRole('button', { name: /Summarize/i });
-    expect(summarizeButton).toBeDisabled();
+      render(<EmailView email={mockEmail} />);
+      const generateButton = screen.getByRole('button', { name: /Generate Draft/i });
+      fireEvent.click(generateButton);
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith({
+          variant: 'destructive',
+          title: 'Drafting Failed',
+          description: 'AI drafting failed',
+        });
+      });
+
+      // Ensure textarea is not shown
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+      expect(generateButton).toBeEnabled();
+    });
+
+    it('disables the generate draft button if the email body is empty', () => {
+        render(<EmailView email={{ ...mockEmail, body: '' }} />);
+        const generateButton = screen.getByRole('button', { name: /Generate Draft/i });
+        expect(generateButton).toBeDisabled();
+    });
   });
 });
