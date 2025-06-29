@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
@@ -26,7 +27,7 @@ jest.mock('@/ai/flows/draft-reply', () => ({
 }));
 const mockedDraftReply = draftReply as jest.Mock;
 
-// Mocking lucide-react icons
+// Mocking lucide-react icons. This MUST include all icons used by EmailView AND its children (like Select).
 jest.mock('lucide-react', () => ({
   Loader2: () => <svg data-testid="loader-icon" />,
   FileText: () => <svg data-testid="file-text-icon" />,
@@ -36,6 +37,10 @@ jest.mock('lucide-react', () => ({
   Sparkles: () => <svg data-testid="sparkles-icon" />,
   PenSquare: () => <svg data-testid="pen-square-icon" />,
   ClipboardCopy: () => <svg data-testid="clipboard-copy-icon" />,
+  // Icons used by the Select component must also be mocked
+  ChevronDown: () => <svg data-testid="chevron-down-icon" />,
+  ChevronUp: () => <svg data-testid="chevron-up-icon" />,
+  Check: () => <svg data-testid="check-icon" />,
 }));
 
 
@@ -153,8 +158,10 @@ describe('EmailView', () => {
 
       // Check for loading state
       expect(generateButton).toBeDisabled();
+      // Check for the "Generating draft..." placeholder in the textarea
       expect(screen.getByDisplayValue('Generating draft...')).toBeInTheDocument();
-      expect(screen.getAllByTestId('loader-icon').length).toBeGreaterThan(0);
+      // Check for the loader icon in the button
+      expect(generateButton.querySelector('[data-testid="loader-icon"]')).toBeInTheDocument();
 
       // Wait for async actions
       await waitFor(() => {
