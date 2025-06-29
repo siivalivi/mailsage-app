@@ -26,9 +26,45 @@ This separation makes the application robust and scalable. The complex AI orches
 
 ---
 
-## System Architecture Diagram
+## Comprehensive Testing Strategy for an MCP Architecture
 
-The following diagram illustrates the main components of the MailSage application and their interactions, highlighting the client-server boundary.
+A key advantage of the MCP pattern is its testability. By clearly separating concerns (View, Controller, Model), we can test each part independently, leading to a robust and reliable application. Our testing strategy uses Jest and is broken down into two main categories:
+
+### 1. Component Testing (The View & Controller Interface)
+
+*   **Tooling**: We use **React Testing Library** to test our React components.
+*   **Goal**: To verify the user-facing experience and the interaction between the View and the Controller.
+*   **Process**:
+    1.  Render a component (e.g., `QueryForm`) in Jest's virtual test environment.
+    2.  Simulate user actions, such as typing into an input field or clicking a button (`fireEvent`).
+    3.  Assert that the UI updates as expected—for example, a loading spinner appears, an error message is shown, or results are displayed (`expect(screen.getByText(...))`).
+
+*   **The Key Technique**: The most crucial aspect of testing the View is **mocking the Controller (Server Actions)**. Our component tests *do not* execute the actual server-side code. Instead, we use `jest.mock` to replace a Server Action (like `queryEmails`) with a fake function. This allows us to:
+    *   **Verify the Call**: Confirm that the component calls the correct action with the correct `Context` data (e.g., `expect(mockedQueryEmails).toHaveBeenCalledWith({ query: 'test', ... })`).
+    *   **Simulate Outcomes**: Force the mock function to return success or error states, allowing us to test how the UI handles different server responses (e.g., displaying results vs. showing an error toast).
+    *   **Isolate and Speed Up**: Keep tests fast and focused solely on the UI's behavior, completely independent of the backend logic.
+
+### 2. Unit Testing (The Model)
+
+*   **Tooling**: We use **Jest** in a Node.js environment to test our Genkit flows.
+*   **Goal**: To verify the server-side business logic, AI orchestration, and data transformations.
+*   **Process**:
+    1.  Import the flow function (e.g., `queryEmails`) directly into the test file.
+    2.  Provide it with a sample input `Context` object.
+    3.  Assert that the flow returns the expected transformed output.
+
+*   **The Key Technique**: Similar to the front-end, the key here is **mocking external dependencies**. Our flow unit tests *do not* make real API calls to Google AI or the Gmail API. We use `jest.mock` to replace `ai.generate` and our `gmailService` with fake functions. This lets us:
+    *   **Test Orchestration**: Verify the flow's internal logic. For example, in `queryEmailsFlow`, we test: "Does it call the AI first to get a search string, *then* call the Gmail service with that string, *then* call the AI again to summarize the results?"
+    *   **Simulate External APIs**: Control the data returned by the fake AI and Gmail calls, allowing us to test our flow's error handling and data transformation logic under various conditions.
+    *   **Ensure Stability**: Keep tests lightning-fast, free of charge, and completely independent of external network conditions or API changes.
+
+### Conclusion
+
+By combining these two testing strategies, we achieve comprehensive coverage of our entire application. **Component tests** validate the user's interaction with the `View` and its contract with the `Controller`, while **Unit tests** validate the complex business logic within the `Model`. This layered approach ensures that every part of the Model-Context-Protocol works exactly as designed, giving us high confidence in the final product.
+
+---
+
+## System Architecture Diagram
 
 ```mermaid
 graph TD
