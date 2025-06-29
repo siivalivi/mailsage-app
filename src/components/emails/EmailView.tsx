@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { summarizeEmail, SummarizeEmailInput } from '@/ai/flows/summarize-email';
 import { draftReply, DraftReplyInput, ReplyTone, ReplyToneSchema } from '@/ai/flows/draft-reply';
-import { Loader2, FileText, MessageSquareText, CalendarDays, UserCircle, Sparkles, PenSquare, ClipboardCopy } from 'lucide-react';
+import { extractActionItems, ExtractActionItemsInput } from '@/ai/flows/extract-action-items';
+import { Loader2, FileText, MessageSquareText, CalendarDays, UserCircle, Sparkles, PenSquare, ClipboardCopy, ListTodo } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -32,11 +33,14 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
   const [isDrafting, setIsDrafting] = useState(false);
   const [draft, setDraft] = useState('');
   const [replyTone, setReplyTone] = useState<ReplyTone>('polite');
+  const [actionItems, setActionItems] = useState<string[] | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     setEmail(initialEmail);
     setDraft(''); // Reset draft when email changes
+    setActionItems(null); // Reset action items
   }, [initialEmail]);
 
   const handleSummarize = async () => {
@@ -84,6 +88,27 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
     if (!draft) return;
     navigator.clipboard.writeText(draft);
     toast({ title: 'Copied to Clipboard', description: 'The draft reply has been copied.' });
+  };
+  
+  const handleExtractActions = async () => {
+    if (!email.body) {
+      toast({ variant: 'destructive', title: 'Cannot Extract', description: 'Email body is empty.' });
+      return;
+    }
+
+    setIsExtracting(true);
+    setActionItems(null);
+    try {
+      const input: ExtractActionItemsInput = { emailContent: email.body };
+      const result = await extractActionItems(input);
+      setActionItems(result.actionItems);
+      toast({ title: 'Action Items Extracted', description: `Found ${result.actionItems.length} action item(s).` });
+    } catch (error: any) {
+      console.error('Error extracting action items:', error);
+      toast({ variant: 'destructive', title: 'Extraction Failed', description: error.message || 'An error occurred while extracting action items.' });
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   return (
@@ -158,6 +183,49 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
                 <div className="prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap break-words text-foreground">
                   {email.summary}
                 </div>
+              )}
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle className="flex items-center text-xl">
+                  <ListTodo className="w-5 h-5 mr-2 text-accent" />
+                  Action Items
+                </CardTitle>
+                <Button onClick={handleExtractActions} disabled={isExtracting || !email.body} size="sm">
+                  {isExtracting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
+                  )}
+                  Extract Actions
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isExtracting && (
+                <div className="flex items-center justify-center h-20">
+                  <Loader2 className="h-8 w-8 animate-spin text-accent" />
+                </div>
+              )}
+              {!isExtracting && actionItems === null && (
+                <p className="text-muted-foreground italic text-sm">
+                  Click 'Extract Actions' to find tasks, questions, and deadlines.
+                </p>
+              )}
+              {!isExtracting && actionItems && actionItems.length === 0 && (
+                <p className="text-muted-foreground text-sm">
+                  No specific action items were found in this email.
+                </p>
+              )}
+              {!isExtracting && actionItems && actionItems.length > 0 && (
+                 <ul className="space-y-2 text-sm text-foreground list-disc pl-5">
+                   {actionItems.map((item, index) => (
+                      <li key={index}>{item}</li>
+                   ))}
+                 </ul>
               )}
             </CardContent>
           </Card>

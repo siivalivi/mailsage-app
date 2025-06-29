@@ -7,6 +7,7 @@ import type { Email } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { summarizeEmail } from '@/ai/flows/summarize-email';
 import { draftReply } from '@/ai/flows/draft-reply';
+import { extractActionItems } from '@/ai/flows/extract-action-items';
 
 // --- Mocks ---
 
@@ -27,6 +28,11 @@ jest.mock('@/ai/flows/draft-reply', () => ({
 }));
 const mockedDraftReply = draftReply as jest.Mock;
 
+jest.mock('@/ai/flows/extract-action-items', () => ({
+    extractActionItems: jest.fn(),
+}));
+const mockedExtractActionItems = extractActionItems as jest.Mock;
+
 // Mocking lucide-react icons. This MUST include all icons used by EmailView AND its children (like Select).
 jest.mock('lucide-react', () => ({
   Loader2: () => <svg data-testid="loader-icon" />,
@@ -37,6 +43,7 @@ jest.mock('lucide-react', () => ({
   Sparkles: () => <svg data-testid="sparkles-icon" />,
   PenSquare: () => <svg data-testid="pen-square-icon" />,
   ClipboardCopy: () => <svg data-testid="clipboard-copy-icon" />,
+  ListTodo: () => <svg data-testid="list-todo-icon" />,
   // Icons used by the Select component must also be mocked
   ChevronDown: () => <svg data-testid="chevron-down-icon" />,
   ChevronUp: () => <svg data-testid="chevron-up-icon" />,
@@ -204,6 +211,70 @@ describe('EmailView', () => {
         render(<EmailView email={{ ...mockEmail, body: '' }} />);
         const generateButton = screen.getByRole('button', { name: /Generate Draft/i });
         expect(generateButton).toBeDisabled();
+    });
+  });
+
+  describe('Action Item Extraction', () => {
+    it('renders the action items card and button', () => {
+      render(<EmailView email={mockEmail} />);
+      expect(screen.getByText('Action Items')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Extract Actions/i })).toBeInTheDocument();
+      expect(screen.getByTestId('list-todo-icon')).toBeInTheDocument();
+    });
+
+    it('calls extractActionItems on button click, shows loading, and updates UI with results', async () => {
+      const actionItems = ['Do this', 'Reply to that'];
+      mockedExtractActionItems.mockResolvedValue({ actionItems });
+
+      render(<EmailView email={mockEmail} />);
+
+      const extractButton = screen.getByRole('button', { name: /Extract Actions/i });
+      fireEvent.click(extractButton);
+
+      // Check for loading state
+      expect(extractButton).toBeDisabled();
+      expect(screen.getAllByTestId('loader-icon').length).toBeGreaterThan(0);
+
+      // Wait for async actions
+      await waitFor(() => {
+        expect(mockedExtractActionItems).toHaveBeenCalledWith({ emailContent: mockEmail.body });
+      });
+
+      // Check for updated UI
+      expect(await screen.findByText('Do this')).toBeInTheDocument();
+      expect(screen.getByText('Reply to that')).toBeInTheDocument();
+      expect(extractButton).toBeEnabled();
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Action Items Extracted' })
+      );
+    });
+
+    it('displays a message when no action items are found', async () => {
+      mockedExtractActionItems.mockResolvedValue({ actionItems: [] });
+      render(<EmailView email={mockEmail} />);
+      const extractButton = screen.getByRole('button', { name: /Extract Actions/i });
+      fireEvent.click(extractButton);
+
+      expect(await screen.findByText('No specific action items were found in this email.')).toBeInTheDocument();
+    });
+
+    it('handles extraction failure and shows an error toast', async () => {
+      const error = new Error('AI extraction failed');
+      mockedExtractActionItems.mockRejectedValue(error);
+
+      render(<EmailView email={mockEmail} />);
+      const extractButton = screen.getByRole('button', { name: /Extract Actions/i });
+      fireEvent.click(extractButton);
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith({
+          variant: 'destructive',
+          title: 'Extraction Failed',
+          description: 'AI extraction failed',
+        });
+      });
+
+      expect(extractButton).toBeEnabled();
     });
   });
 });
