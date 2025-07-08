@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview A Genkit flow that uses an AI agent with tools to query a user's Gmail account.
@@ -166,28 +167,52 @@ const billingTool = ai.defineTool({
     description: 'Use for queries about billing, invoices, receipts, payments, charges, or orders.',
     inputSchema: toolInputSchema,
     outputSchema: GmailQuerySchema
-  }, async (input) => (await billingTransformPrompt(input)).output!);
+  }, async (input) => {
+    const response = await billingTransformPrompt(input);
+    if (!response.output) {
+      throw new Error("The AI subsystem for billing queries failed to generate a search string.");
+    }
+    return response.output;
+  });
 
 const travelTool = ai.defineTool({
     name: 'createTravelSearchQuery',
     description: 'Use for queries about travel, flights, hotels, car rentals, bookings, or itineraries.',
     inputSchema: toolInputSchema,
     outputSchema: GmailQuerySchema
-  }, async (input) => (await travelTransformPrompt(input)).output!);
+  }, async (input) => {
+    const response = await travelTransformPrompt(input);
+    if (!response.output) {
+      throw new Error("The AI subsystem for travel queries failed to generate a search string.");
+    }
+    return response.output;
+  });
 
 const promotionsTool = ai.defineTool({
     name: 'createPromotionsSearchQuery',
     description: 'Use for queries about promotions, sales, discounts, offers, or coupons.',
     inputSchema: toolInputSchema,
     outputSchema: GmailQuerySchema
-  }, async (input) => (await promotionsTransformPrompt(input)).output!);
+  }, async (input) => {
+    const response = await promotionsTransformPrompt(input);
+    if (!response.output) {
+      throw new Error("The AI subsystem for promotions queries failed to generate a search string.");
+    }
+    return response.output;
+  });
 
 const generalTool = ai.defineTool({
     name: 'createGeneralSearchQuery',
     description: 'Use for all other queries that do not fit into billing, travel, or promotions.',
     inputSchema: toolInputSchema,
     outputSchema: GmailQuerySchema
-  }, async (input) => (await generalTransformPrompt(input)).output!);
+  }, async (input) => {
+    const response = await generalTransformPrompt(input);
+    if (!response.output) {
+      throw new Error("The AI subsystem for general queries failed to generate a search string.");
+    }
+    return response.output;
+  });
 
 
 // --- Main Agentic Flow ---
@@ -279,3 +304,5 @@ const queryEmailsFlow = ai.defineFlow(
     return { emailList: relevantEmails };
   }
 );
+
+    
