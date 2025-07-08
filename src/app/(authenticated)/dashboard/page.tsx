@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { MailQuestion, Info, Loader2 } from 'lucide-react';
 import { summarizeQueriedEmails, SummarizeQueriedEmailsInput } from '@/ai/flows/summarize-queried-emails-flow';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import DailyBriefing from '@/components/emails/DailyBriefing';
 
 // Adapts QueriedEmail (from Gmail via AI flow) to the Email type for display list.
 const adaptQueriedEmailsToDisplay = (queriedEmails: QueriedEmail[]): Email[] => {
@@ -84,9 +85,11 @@ export default function DashboardPage() {
       <div>
         <h2 className="text-3xl font-semibold mb-2">Welcome back, {currentUser.displayName?.split(' ')[0] || 'User'}!</h2>
         <p className="text-muted-foreground text-lg">
-          Use the search bar below to query your connected Gmail account.
+          Use the features below to interact with your connected Gmail account.
         </p>
       </div>
+      
+      <DailyBriefing />
       
       <QueryForm onQuerySubmit={handleQuerySubmit} setIsLoading={setIsLoading} />
 
