@@ -94,19 +94,7 @@ export async function queryEmails(
       ? `The AI agent failed to understand the query. Please try rephrasing your request.`
       : `An unexpected server error occurred: ${error.message}`;
       
-    return {
-      emailList: [
-        {
-          id: 'error-critical-flow-error',
-          sender: 'MailSage System',
-          subject: 'Error: Failed to Process Query',
-          snippet: friendlyMessage,
-          timestamp: Date.now(),
-          summary:
-            'A critical error occurred on the server while trying to process your request. Please check the system logs for more details.',
-        },
-      ],
-    };
+    throw new Error(friendlyMessage);
   }
 }
 
@@ -119,10 +107,13 @@ const currentDateForLLM = `${now.getFullYear()}-${(now.getMonth() + 1)
 
 const commonPromptInstructions = `
 You are a powerful text-processing utility. Your task is to convert a user's natural language email query into a valid, efficient Gmail API search query string.
-- Use the current date ("${currentDateForLLM}") as a reference for any relative date expressions (e.g., "last week", "month of may").
-- Translate keywords into Gmail search operators (e.g., from:, to:, subject:).
-- For date ranges, use 'after:' and 'before:' in YYYY/MM/DD format (e.g., 'after:2023/01/01 before:2023/01/31').
-- Your response MUST be a JSON object conforming to the required schema.
+- The user's query is: "{{query}}"
+- The current date is: "${currentDateForLLM}". Use this as the reference for all relative date calculations.
+- For date ranges like "this month" or "last two months", you MUST calculate the start and end dates and use the format 'after:YYYY/MM/DD before:YYYY/MM/DD'.
+- If a specific sender is mentioned (e.g., from:uber, from:hotels.com), you MUST include it in the query using the 'from:' operator.
+- If no specific sender is mentioned, use keywords from the query.
+- Your final output MUST be a single JSON object conforming to the required schema: { "gmailQueryString": "your_generated_query" }.
+- Do not add any extra explanations or text outside of the JSON object.
 `;
 
 const billingTransformPrompt = ai.definePrompt({
@@ -130,9 +121,8 @@ const billingTransformPrompt = ai.definePrompt({
   output: { schema: GmailQuerySchema },
   prompt: `${commonPromptInstructions}
 This is a BILLING query. Focus on financial terms.
-- Broaden the search with terms like '(invoice OR receipt OR bill OR payment OR charge OR order)'.
-- Pay attention to specific senders or merchants mentioned.
-User Query: "{{query}}"`,
+- For broad billing queries, consider using terms like '(invoice OR receipt OR bill OR payment OR charge OR order)'.
+- Combine these with any specific senders or date ranges from the user's query.`,
 });
 
 const travelTransformPrompt = ai.definePrompt({
@@ -140,9 +130,8 @@ const travelTransformPrompt = ai.definePrompt({
   output: { schema: GmailQuerySchema },
   prompt: `${commonPromptInstructions}
 This is a TRAVEL query. Focus on booking and itinerary terms.
-- Look for keywords like '(flight OR hotel OR car rental OR confirmation OR booking OR itinerary)'.
-- Identify travel companies, airlines, or hotel names.
-User Query: "{{query}}"`,
+- For broad travel queries, consider using terms like '(flight OR hotel OR car rental OR confirmation OR booking OR itinerary)'.
+- Combine these with any specific travel companies, airlines, or hotel names mentioned in the user's query.`,
 });
 
 const promotionsTransformPrompt = ai.definePrompt({
@@ -151,8 +140,8 @@ const promotionsTransformPrompt = ai.definePrompt({
   prompt: `${commonPromptInstructions}
 This is a PROMOTIONS query. Focus on marketing and sales terms.
 - Search for terms like '(sale OR discount OR offer OR % off OR coupon)'.
-- Consider searching within the 'promotions' category label if general: 'category:promotions'.
-User Query: "{{query}}"`,
+- If the query is general, consider adding 'category:promotions' to the search.
+- Combine these with any specific senders or date ranges from the user's query.`,
 });
 
 const generalTransformPrompt = ai.definePrompt({
@@ -160,7 +149,8 @@ const generalTransformPrompt = ai.definePrompt({
   output: { schema: GmailQuerySchema },
   prompt: `${commonPromptInstructions}
 This is a GENERAL query. Perform a standard keyword translation.
-User Query: "{{query}}"`,
+- Extract the key nouns, verbs, and proper nouns from the user's query.
+- Combine these with any specified date ranges.`,
 });
 
 // --- Agentic Tools ---
@@ -232,11 +222,18 @@ const queryEmailsFlow = ai.defineFlow(
     // STEP 1: Invoke an agent with tools to generate the query string.
     console.log('[queryEmailsFlow] Step 1: Invoking agent to generate Gmail query via tool use.');
 
+    const agentPrompt = `You are a highly intelligent email search query router. Your primary function is to analyze a user's natural language query and determine the most appropriate category for the search: "billing", "travel", "promotions", or "general".
+
+Based on your analysis, you must select and invoke the single most relevant tool to generate a syntactically correct Gmail search query string.
+
+The user's query is: "${flowInput.query}"
+
+Pass this query to the chosen tool. The tool will handle the transformation.`;
+
     const agentResponse = await ai.generate({
-      prompt: `You are an expert email search agent. Your goal is to generate a precise Gmail search query string. Analyze the user's query to understand its intent, then select and use the single most appropriate tool to generate the query string.`,
+      prompt: agentPrompt,
       tools: [billingTool, travelTool, promotionsTool, generalTool],
       output: { schema: GmailQuerySchema },
-      input: { query: flowInput.query },
     });
 
     const transformedQuery = agentResponse.output?.gmailQueryString;
@@ -272,11 +269,17 @@ const queryEmailsFlow = ai.defineFlow(
       Snippet: "${email.snippet}"
       ---`).join('\n');
 
-    const refinePrompt = `You are an intelligent email processing agent. Your task is to process a list of emails retrieved based on a user's query. For EACH email provided, you must:
-1. Determine if it is relevant to the user's original query.
-2. Create a concise summary of the email snippet, focusing on what makes it relevant. If it's not relevant, the summary can be a brief note explaining why (e.g., "General marketing email").
+    const refinePrompt = `You are an intelligent email processing agent. Your task is to process a list of emails retrieved from a Gmail search. For EACH email provided below, you must perform two tasks:
 
-Your final output MUST be a JSON object with a 'refinedEmails' array. This array must contain an object for EVERY email you were given. Do not filter any emails out from the final list, just mark their relevance.
+1.  **Relevance Check**: Determine if the email is truly relevant to the user's original query. The initial Gmail search can sometimes be too broad.
+2.  **Summarization**: Create a concise summary of the email snippet that directly addresses the user's query.
+
+**CRITICAL INSTRUCTIONS:**
+- Your final output MUST be a JSON object with a single key: 'refinedEmails'.
+- The 'refinedEmails' key must contain an array of objects.
+- This array MUST contain an object for EVERY single email provided in the input. **DO NOT OMIT ANY EMAILS.**
+- For each email, you must set the 'isRelevant' boolean field. Set it to \`true\` if the email's content (sender, subject, snippet) directly matches the user's request. Otherwise, set it to \`false\`.
+- Even if an email is not relevant, you must still include it in the output array with \`isRelevant: false\` and provide a brief summary explaining why it was not relevant (e.g., "This is a marketing email, not a bill.").
 
 User's Original Query: "${flowInput.query}"
 
