@@ -1,9 +1,9 @@
 'use server';
 /**
- * @fileOverview A Genkit flow that uses an AI router to query a user's Gmail account.
- * This flow first categorizes the user's query, then invokes a specialized AI agent
- * to transform the natural language query into a structured Gmail search, fetches the emails,
- * and then summarizes the results.
+ * @fileOverview A Genkit flow that uses an AI agent with tools to query a user's Gmail account.
+ * This "agentic" flow presents the AI with a set of specialized tools, and the AI reasons
+ * which tool is most appropriate to handle the user's natural language query. It then uses
+ * that tool to generate a structured Gmail search, fetches the emails, and summarizes the results.
  *
  * - queryEmails - The primary exported function that executes the email query process.
  * - QueryEmailsInput - The input type for the queryEmails function.
@@ -14,7 +14,7 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { fetchGmailMessages, FetchedEmailData } from '@/services/gmailService';
 
-// --- Public Input/Output Schemas ---
+// --- Public Input/Output Schemas (Unchanged) ---
 
 const QueryEmailsInputSchema = z.object({
   query: z.string().describe('The natural language query to search emails.'),
@@ -44,22 +44,7 @@ const QueryEmailsOutputSchema = z.object({
 });
 export type QueryEmailsOutput = z.infer<typeof QueryEmailsOutputSchema>;
 
-// --- Schemas for AI responses ---
-
-const QueryCategorySchema = z.enum([
-  'billing',
-  'travel',
-  'promotions',
-  'social_media',
-  'general',
-]);
-type QueryCategory = z.infer<typeof QueryCategorySchema>;
-
-const CategorizeQueryOutputSchema = z.object({
-  category: QueryCategorySchema.describe(
-    'The determined category of the user query.'
-  ),
-});
+// --- Schemas for AI responses and Tools ---
 
 const GmailQuerySchema = z.object({
   gmailQueryString: z.string().describe('The generated Gmail API query string.'),
@@ -87,7 +72,7 @@ const RefineAndSummarizeOutputSchema = z.object({
   refinedEmails: z.array(RefinedEmailSchema),
 });
 
-// --- Exported Function ---
+// --- Exported Function (Unchanged public signature) ---
 
 export async function queryEmails(
   input: QueryEmailsInput
@@ -100,10 +85,9 @@ export async function queryEmails(
     return result;
   } catch (error: any) {
     console.error(
-      `[queryEmails] Critical error during flow execution for query "${input.query}". Error:`,
+      `[queryEmails] Critical error during agentic flow execution for query "${input.query}". Error:`,
       error
     );
-    // Create a user-facing error email
     return {
       emailList: [
         {
@@ -120,7 +104,7 @@ export async function queryEmails(
   }
 }
 
-// --- Specialized Prompts (The "Agents") ---
+// --- Specialized Prompts (The "Skills" for our Tools) ---
 
 const now = new Date();
 const currentDateForLLM = `${now.getFullYear()}-${(now.getMonth() + 1)
@@ -173,7 +157,40 @@ This is a GENERAL query. Perform a standard keyword translation.
 User Query: "{{query}}"`,
 });
 
-// --- Main Flow Definition ---
+// --- Agentic Tools ---
+
+const toolInputSchema = z.object({ query: z.string().describe("The user's original, natural language query.") });
+
+const billingTool = ai.defineTool({
+    name: 'createBillingSearchQuery',
+    description: 'Use for queries about billing, invoices, receipts, payments, charges, or orders.',
+    inputSchema: toolInputSchema,
+    outputSchema: GmailQuerySchema
+  }, async (input) => (await billingTransformPrompt(input)).output!);
+
+const travelTool = ai.defineTool({
+    name: 'createTravelSearchQuery',
+    description: 'Use for queries about travel, flights, hotels, car rentals, bookings, or itineraries.',
+    inputSchema: toolInputSchema,
+    outputSchema: GmailQuerySchema
+  }, async (input) => (await travelTransformPrompt(input)).output!);
+
+const promotionsTool = ai.defineTool({
+    name: 'createPromotionsSearchQuery',
+    description: 'Use for queries about promotions, sales, discounts, offers, or coupons.',
+    inputSchema: toolInputSchema,
+    outputSchema: GmailQuerySchema
+  }, async (input) => (await promotionsTransformPrompt(input)).output!);
+
+const generalTool = ai.defineTool({
+    name: 'createGeneralSearchQuery',
+    description: 'Use for all other queries that do not fit into billing, travel, or promotions.',
+    inputSchema: toolInputSchema,
+    outputSchema: GmailQuerySchema
+  }, async (input) => (await generalTransformPrompt(input)).output!);
+
+
+// --- Main Agentic Flow ---
 
 const queryEmailsFlow = ai.defineFlow(
   {
@@ -182,55 +199,31 @@ const queryEmailsFlow = ai.defineFlow(
     outputSchema: QueryEmailsOutputSchema,
   },
   async (flowInput) => {
-    // STEP 1: Categorize the user's query to select the correct agent.
-    console.log('[queryEmailsFlow] Step 1: Categorizing user query.');
-    const categorizePrompt = `You are an expert query routing agent. Your job is to classify the user's email search query into one of the following categories: ${QueryCategorySchema.options.join(', ')}.
-- billing: Queries about invoices, receipts, payments, charges, or orders.
-- travel: Queries about flights, hotels, car rentals, bookings, or itineraries.
-- promotions: Queries about sales, discounts, offers, or coupons.
-- social_media: Queries mentioning platforms like Facebook, Twitter, LinkedIn.
-- general: All other queries that do not fit the above categories.
-Your response MUST be a JSON object conforming to the required schema.
-User Query: "${flowInput.query}"`;
+    // STEP 1 (REVISED): Invoke an agent with tools to generate the query string.
+    console.log('[queryEmailsFlow] Step 1: Invoking agent to generate Gmail query via tool use.');
 
-    const categoryResponse = await ai.generate({
-      prompt: categorizePrompt,
-      output: { schema: CategorizeQueryOutputSchema },
+    const agentResponse = await ai.generate({
+      prompt: `You are an expert email search agent. Your goal is to generate a precise Gmail search query string based on the user's request.
+        - Analyze the user's query to understand its intent.
+        - Select and use the single most appropriate tool to generate the query string.
+        - Your final output must be ONLY the JSON object containing the query string from the tool.`,
+      tools: [billingTool, travelTool, promotionsTool, generalTool],
+      output: { schema: GmailQuerySchema },
+      input: { query: flowInput.query },
     });
 
-    const category = categoryResponse.output?.category || 'general';
-    console.log(`[queryEmailsFlow] Query categorized as: "${category}"`);
-
-    // STEP 2: Select the specialized agent (prompt) and transform the query.
-    console.log('[queryEmailsFlow] Step 2: Transforming natural language to Gmail query using specialized agent.');
-    let transformPrompt;
-    switch (category) {
-      case 'billing':
-        transformPrompt = billingTransformPrompt;
-        break;
-      case 'travel':
-        transformPrompt = travelTransformPrompt;
-        break;
-      case 'promotions':
-        transformPrompt = promotionsTransformPrompt;
-        break;
-      default:
-        transformPrompt = generalTransformPrompt;
-    }
-
-    const transformResponse = await transformPrompt({ query: flowInput.query });
-    const transformedQuery = transformResponse.output?.gmailQueryString;
+    const transformedQuery = agentResponse.output?.gmailQueryString;
 
     if (!transformedQuery) {
       throw new Error(
-        'AI failed to transform the query. The model response was empty or invalid.'
+        'Agent failed to generate a query string using tools. The model response was empty or invalid.'
       );
     }
     console.log(
-      `[queryEmailsFlow] AI-generated Gmail query: "${transformedQuery}"`
+      `[queryEmailsFlow] Agent-generated Gmail query: "${transformedQuery}"`
     );
 
-    // STEP 3: Fetch emails from Gmail API using the transformed query.
+    // STEP 2: Fetch emails from Gmail API using the transformed query.
     const emails: FetchedEmailData[] = await fetchGmailMessages(
       flowInput.accessToken,
       transformedQuery,
@@ -238,43 +231,27 @@ User Query: "${flowInput.query}"`;
     );
 
     if (emails.length === 0) {
-      console.log(
-        '[queryEmailsFlow] No emails found from Gmail API. Returning empty list.'
-      );
+      console.log('[queryEmailsFlow] No emails found from Gmail API. Returning empty list.');
       return { emailList: [] };
     }
-    console.log(
-      `[queryEmailsFlow] Fetched ${emails.length} emails from Gmail. Now refining with AI.`
-    );
+    console.log(`[queryEmailsFlow] Fetched ${emails.length} emails. Now refining with AI.`);
 
-    // STEP 4: Use AI to refine and summarize the fetched emails.
-    console.log('[queryEmailsFlow] Step 4: Refining and summarizing fetched emails.');
+    // STEP 3: Use AI to refine and summarize the fetched emails.
+    const emailsToProcessString = emails.map(email => `---
+      Email ID: ${email.id}
+      From: ${email.sender}
+      Subject: ${email.subject}
+      Timestamp: ${email.timestamp}
+      Snippet: "${email.snippet}"
+      ---`).join('\n');
 
-    const emailsToProcessString = emails
-      .map(
-        (email) =>
-          `---
-Email ID: ${email.id}
-From: ${email.sender}
-Subject: ${email.subject}
-Timestamp: ${email.timestamp}
-Snippet: "${email.snippet}"
----`
-      )
-      .join('\n');
-
-    const refinePrompt = `You are an intelligent email processing agent. Your task is to review a list of emails fetched from Gmail based on a search query.
-For EACH email, you must perform two actions:
-1.  Relevance Check: Determine if the email's content (snippet) is truly relevant to the user's original query.
-2.  Summarization: If the email is relevant, create a concise, informative summary of its snippet that directly addresses the user's query intent.
-Produce a JSON output containing a 'refinedEmails' array. For EACH email provided, include an object in the array with the fields 'isRelevant', 'id', 'sender', 'subject', 'snippet', 'timestamp', and 'summary'.
-- Only include emails where 'isRelevant' is true in the final user-facing list.
-
-User's Original Query: "${flowInput.query}"
-
-Here are the emails to process:
-${emailsToProcessString}
-`;
+    const refinePrompt = `You are an intelligent email processing agent. Review a list of emails and for EACH one:
+      1. Relevance Check: Determine if it's truly relevant to the user's original query.
+      2. Summarization: If relevant, create a concise summary focusing on the query's intent.
+      Produce a JSON output with a 'refinedEmails' array. Only include relevant emails in the final list.
+      User's Original Query: "${flowInput.query}"
+      Here are the emails to process:
+      ${emailsToProcessString}`;
 
     const refineResponse = await ai.generate({
       prompt: refinePrompt,
@@ -284,12 +261,9 @@ ${emailsToProcessString}
     const refineResult = refineResponse.output;
 
     if (!refineResult || !refineResult.refinedEmails) {
-      throw new Error(
-        'AI failed to refine and summarize the fetched emails. The model response was empty, invalid, or did not contain refined emails.'
-      );
+      throw new Error('AI failed to refine and summarize the fetched emails.');
     }
 
-    // Filter for relevant emails and map to the final output schema.
     const relevantEmails = refineResult.refinedEmails
       .filter((email) => email.isRelevant)
       .map((email) => ({
@@ -301,9 +275,7 @@ ${emailsToProcessString}
         summary: email.summary,
       }));
 
-    console.log(
-      `[queryEmailsFlow] AI refined the list to ${relevantEmails.length} relevant emails.`
-    );
+    console.log(`[queryEmailsFlow] AI refined list to ${relevantEmails.length} relevant emails.`);
     return { emailList: relevantEmails };
   }
 );
