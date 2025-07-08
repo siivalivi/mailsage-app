@@ -9,10 +9,10 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { fetchGmailMessages, type FetchedEmailData } from '@/services/gmailService';
-import { subDays, format } from 'date-fns';
+import { subDays, format, startOfWeek } from 'date-fns';
 
 const GenerateDailyBriefingInputSchema = z.object({
-  day: z.enum(['today', 'yesterday']).describe("The day to generate the briefing for, either 'today' or 'yesterday'."),
+  timeRange: z.enum(['today', 'yesterday', 'this-week', 'last-7-days']).describe("The time range to generate the briefing for."),
   accessToken: z.string().describe('Google OAuth2 Access Token for Gmail API.'),
 });
 export type GenerateDailyBriefingInput = z.infer<typeof GenerateDailyBriefingInputSchema>;
@@ -33,9 +33,9 @@ export async function generateDailyBriefing(input: GenerateDailyBriefingInput): 
 
 const briefingPrompt = ai.definePrompt({
     name: 'dailyBriefingPrompt',
-    input: { schema: z.object({ emails: z.array(z.any()), day: z.string() }) },
+    input: { schema: z.object({ emails: z.array(z.any()), timeRange: z.string() }) },
     output: { schema: GenerateDailyBriefingOutputSchema },
-    prompt: `You are a highly efficient executive assistant. Your task is to create a concise daily briefing from a list of emails for {{day}}.
+    prompt: `You are a highly efficient executive assistant. Your task is to create a concise daily briefing from a list of emails for the following time range: {{timeRange}}.
 Analyze the provided list of emails and categorize them into logical groups.
 
 **CRITICAL INSTRUCTIONS:**
@@ -54,7 +54,7 @@ Here are the emails to process:
 ---
 {{/each}}
 
-Generate the briefing based on these emails. If there are no emails, state that the inbox for that day was empty.
+Generate the briefing based on these emails. If there are no emails, state that the inbox for that time range was empty.
 `,
 });
 
@@ -69,29 +69,42 @@ const generateDailyBriefingFlow = ai.defineFlow(
     // Set time to start of day for consistent date comparisons
     now.setHours(0, 0, 0, 0); 
     
-    const targetDate = input.day === 'today' ? now : subDays(now, 1);
-    
-    // Format for Gmail API query: YYYY/MM/DD
-    const afterDate = format(targetDate, 'yyyy/MM/dd');
-    const beforeDate = format(new Date(targetDate.getTime() + 24 * 60 * 60 * 1000), 'yyyy/MM/dd');
+    let afterDate: Date;
+    let beforeDate: Date = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Default to tomorrow morning
 
-    const gmailQuery = `after:${afterDate} before:${beforeDate}`;
+    switch (input.timeRange) {
+        case 'today':
+            afterDate = now;
+            break;
+        case 'yesterday':
+            afterDate = subDays(now, 1);
+            beforeDate = now;
+            break;
+        case 'this-week':
+            afterDate = startOfWeek(now, { weekStartsOn: 1 }); // week starts on Monday
+            break;
+        case 'last-7-days':
+            afterDate = subDays(now, 7);
+            break;
+    }
     
-    console.log(`[generateDailyBriefingFlow] Fetching emails with query: "${gmailQuery}"`);
+    const gmailQuery = `after:${format(afterDate, 'yyyy/MM/dd')} before:${format(beforeDate, 'yyyy/MM/dd')}`;
+    
+    console.log(`[generateDailyBriefingFlow] Fetching emails with query: "${gmailQuery}" for time range "${input.timeRange}"`);
 
     const emails: FetchedEmailData[] = await fetchGmailMessages(
       input.accessToken,
       gmailQuery,
-      50 // Fetch up to 50 emails for a daily briefing
+      50 // Fetch up to 50 emails for a briefing
     );
 
     if (emails.length === 0) {
-      return { briefing: `No emails found for ${input.day}. Your inbox is clear!` };
+      return { briefing: `No emails found for ${input.timeRange.replace('-', ' ')}. Your inbox is clear!` };
     }
 
     console.log(`[generateDailyBriefingFlow] Found ${emails.length} emails. Generating briefing.`);
 
-    const response = await briefingPrompt({ emails, day: input.day });
+    const response = await briefingPrompt({ emails, timeRange: input.timeRange });
 
     if (!response || !response.output) {
         throw new Error('The AI failed to generate a summary for the briefing.');
