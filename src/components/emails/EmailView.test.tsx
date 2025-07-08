@@ -24,7 +24,6 @@ const mockedSummarizeEmail = summarizeEmail as jest.Mock;
 
 jest.mock('@/ai/flows/draft-reply', () => ({
   draftReply: jest.fn(),
-  ReplyToneSchema: { options: ['polite', 'formal', 'casual', 'direct', 'friendly'] },
 }));
 const mockedDraftReply = draftReply as jest.Mock;
 

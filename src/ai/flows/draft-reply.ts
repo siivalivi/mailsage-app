@@ -8,10 +8,7 @@
  */
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
-
-export const ReplyToneSchema = z.enum(['polite', 'formal', 'casual', 'direct', 'friendly']);
-export type ReplyTone = z.infer<typeof ReplyToneSchema>;
-
+import { ReplyToneSchema } from '@/types/schemas';
 
 const DraftReplyInputSchema = z.object({
   emailContent: z.string().describe('The complete content of the email to reply to.'),
