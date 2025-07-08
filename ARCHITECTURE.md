@@ -82,6 +82,7 @@ graph TD
                 QueryForm["QueryForm"]
                 EmailList["EmailList/EmailListItem"]
                 EmailView["EmailView"]
+                DailyBriefing["DailyBriefing"]
             end
         end
 
@@ -90,6 +91,7 @@ graph TD
         
         DashboardPage --> QueryForm
         DashboardPage --> EmailList
+        DashboardPage --> DailyBriefing
         EmailList -- "Selects Email" --> EmailPage
         EmailPage --> EmailView
     end
@@ -101,12 +103,14 @@ graph TD
             SA_queryEmails["queryEmails"]
             SA_summarizeEmail["summarizeEmail"]
             SA_summarizeQueriedEmails["summarizeQueriedEmails"]
+            SA_generateDailyBriefing["generateDailyBriefing"]
         end
         
         subgraph "Genkit Flows (The Model)"
-            F_queryEmails["Flow: queryEmailsFlow"]
+            F_queryEmails["Flow: queryEmailsFlow (Agentic)"]
             F_summarizeEmail["Flow: summarizeEmailFlow"]
             F_summarizeQueriedEmails["Flow: summarizeQueriedEmailsFlow"]
+            F_generateDailyBriefing["Flow: generateDailyBriefingFlow"]
         end
         
         subgraph "Services (Data Access Layer)"
@@ -119,22 +123,27 @@ graph TD
         SA_queryEmails -- "Invokes Model w/ Context" --> F_queryEmails
         SA_summarizeEmail -- "Invokes Model w/ Context" --> F_summarizeEmail
         SA_summarizeQueriedEmails -- "Invokes Model w/ Context" --> F_summarizeQueriedEmails
+        SA_generateDailyBriefing -- "Invokes Model w/ Context" --> F_generateDailyBriefing
         
         %% Model internal communication
         F_queryEmails -- "Uses Service" --> S_GmailService
         F_queryEmails -- "Calls LLM" --> M_Gemini["Gemini Model"]
         F_summarizeEmail -- "Calls LLM" --> M_Gemini
         F_summarizeQueriedEmails -- "Calls LLM" --> M_Gemini
+        F_generateDailyBriefing -- "Uses Service" --> S_GmailService
+        F_generateDailyBriefing -- "Calls LLM" --> M_Gemini
         
         F_queryEmails -- "Uses" --> GenkitInit
         F_summarizeEmail -- "Uses" --> GenkitInit
         F_summarizeQueriedEmails -- "Uses" --> GenkitInit
+        F_generateDailyBriefing -- "Uses" --> GenkitInit
     end
     
     %% Client to Server communication
     QueryForm -- "Submits Context (Query) via RPC" --> SA_queryEmails
     EmailView -- "Submits Context (Email Body) via RPC" --> SA_summarizeEmail
     DashboardPage -- "Submits Context (Summaries) via RPC" --> SA_summarizeQueriedEmails
+    DailyBriefing -- "Submits Context (Time Range) via RPC" --> SA_generateDailyBriefing
 
 
     subgraph "External Services & APIs"
@@ -167,8 +176,8 @@ graph TD
     classDef server fill:#d4fcd7,stroke:#333,stroke-width:2px;
     classDef external fill:#d3d3d3,stroke:#333,stroke-width:2px;
 
-    class HomePage,DashboardPage,EmailPage,QueryForm,EmailList,EmailView,AuthContext client;
-    class SA_queryEmails,SA_summarizeEmail,SA_summarizeQueriedEmails,F_queryEmails,F_summarizeEmail,F_summarizeQueriedEmails,M_Gemini,S_GmailService,GenkitInit server;
+    class HomePage,DashboardPage,EmailPage,QueryForm,EmailList,EmailView,AuthContext,DailyBriefing client;
+    class SA_queryEmails,SA_summarizeEmail,SA_summarizeQueriedEmails,SA_generateDailyBriefing,F_queryEmails,F_summarizeEmail,F_summarizeQueriedEmails,F_generateDailyBriefing,M_Gemini,S_GmailService,GenkitInit server;
     class FirebaseAuth,GoogleOAuth,GmailAPI,GoogleAI external;
 
 ```
@@ -178,11 +187,17 @@ graph TD
 1.  **Sign-In & Context Initialization (Client):** The user signs in. `AuthContext` uses Firebase/Google OAuth to create the initial **Context**, containing the user's identity and a Gmail API `accessToken`.
 2.  **User Query (Client -> Server):** The user types a query into `QueryForm` on the client. This action calls the `queryEmails` Server Action, passing a **Context** object containing the query text across the network to the server.
 3.  **Context Enrichment (Server):** The `queryEmails` Server Action enriches the **Context** with the `accessToken` from `AuthContext` and then invokes the `queryEmailsFlow` model.
-4.  **Model Execution (Server):** The `queryEmailsFlow` executes its multi-step protocol on the **Context**:
-    *   **LLM Call 1:** It sends the `query` from the **Context** to Gemini to transform it into a structured Gmail API search string.
+4.  **Model Execution (Server - Query Flow):** The `queryEmailsFlow` executes its multi-step **agentic** protocol:
+    *   **LLM Agent Call:** It presents the user's `query` and a set of specialized `tools` (e.g., `billingTool`, `travelTool`) to a master AI agent.
+    *   **Tool Selection:** The agent reasons about the query and decides which tool is most appropriate to use.
+    *   **Tool Execution:** The agent invokes the selected tool, which in turn calls a specialized, fine-tuned LLM prompt to transform the natural language query into a structured Gmail API search string.
     *   **Service Call:** It uses the new search string and the `accessToken` to call `gmailService`, which fetches email metadata from the external Gmail API.
-    *   **LLM Call 2:** It takes the email snippets and sends them back to Gemini for relevance filtering and summarization.
-5.  **Final Context (Server -> Client):** The flow returns the final, fully enriched **Context** containing a structured list of `QueriedEmail` objects. The Server Action passes this back to the `DashboardPage` on the client, which updates its state and displays the results.
+    *   **LLM Refinement:** It takes the email snippets and sends them back to Gemini for relevance filtering and summarization.
+5.  **Model Execution (Server - Briefing Flow):**
+    *   A user clicks a time range (e.g., "Today") in the `DailyBriefing` component.
+    *   This calls the `generateDailyBriefing` server action, which invokes the `generateDailyBriefingFlow`.
+    *   The flow calculates the correct date range, calls `gmailService` to fetch all emails in that range, and then uses an LLM to categorize and summarize the results into a Markdown-formatted briefing.
+6.  **Final Context (Server -> Client):** The flow returns the final, fully enriched **Context** containing a structured list of emails or a briefing. The Server Action passes this back to the client, which updates its state and displays the results.
 
 ## Flexibility of MCP vs. Direct API Calls
 
@@ -198,7 +213,7 @@ If our React components were to call the Google AI and Gmail APIs directly, the 
 ### The MCP Approach: Flexibility Through Abstraction
 
 By using MCP, we gain enormous flexibility:
-*   **The Client is Decoupled:** The client's only responsibility is to send a simple `query` string. It doesn't know or care how the server generates the results.
+*   **The Client is Decoupled:** The client's only responsibility is to send a simple `query` string or a `timeRange`. It doesn't know or care how the server generates the results.
 *   **The Server "Protocol" is Flexible:** We can change the server-side logic at any time without affecting the client. For example, we could:
     *   Swap `gemini-2.0-flash` for a more powerful model.
     *   Add a database caching layer to reduce Gmail API calls.
