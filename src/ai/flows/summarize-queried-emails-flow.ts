@@ -72,10 +72,9 @@ const summarizeQueriedEmailsFlow = ai.defineFlow(
       return { overallSummary: 'No email summaries were provided to synthesize.' };
     }
     
-    const response = await ai.generate({
-      prompt: prompt,
-      input: input,
-    });
+    // The prompt object is an invokable function. Calling it directly is the modern
+    // and recommended pattern. It's equivalent to ai.generate({prompt:..., input:..., output:...}).
+    const response = await prompt(input);
 
     if (!response || !response.output) {
       console.error('[summarizeQueriedEmailsFlow] ERROR: The AI model failed to generate an overall summary. The response or its output was undefined.', response);
