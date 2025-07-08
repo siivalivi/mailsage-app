@@ -1,9 +1,9 @@
-
 'use server';
 /**
- * @fileOverview A Genkit flow that uses AI to query a user's Gmail account.
- * This flow orchestrates a multi-step AI process to transform a natural language query
- * into a structured Gmail search, fetches the emails, and then summarizes the results.
+ * @fileOverview A Genkit flow that uses an AI router to query a user's Gmail account.
+ * This flow first categorizes the user's query, then invokes a specialized AI agent
+ * to transform the natural language query into a structured Gmail search, fetches the emails,
+ * and then summarizes the results.
  *
  * - queryEmails - The primary exported function that executes the email query process.
  * - QueryEmailsInput - The input type for the queryEmails function.
@@ -46,6 +46,21 @@ export type QueryEmailsOutput = z.infer<typeof QueryEmailsOutputSchema>;
 
 // --- Schemas for AI responses ---
 
+const QueryCategorySchema = z.enum([
+  'billing',
+  'travel',
+  'promotions',
+  'social_media',
+  'general',
+]);
+type QueryCategory = z.infer<typeof QueryCategorySchema>;
+
+const CategorizeQueryOutputSchema = z.object({
+  category: QueryCategorySchema.describe(
+    'The determined category of the user query.'
+  ),
+});
+
 const GmailQuerySchema = z.object({
   gmailQueryString: z.string().describe('The generated Gmail API query string.'),
 });
@@ -71,7 +86,6 @@ const RefinedEmailSchema = z.object({
 const RefineAndSummarizeOutputSchema = z.object({
   refinedEmails: z.array(RefinedEmailSchema),
 });
-
 
 // --- Exported Function ---
 
@@ -106,6 +120,59 @@ export async function queryEmails(
   }
 }
 
+// --- Specialized Prompts (The "Agents") ---
+
+const now = new Date();
+const currentDateForLLM = `${now.getFullYear()}-${(now.getMonth() + 1)
+  .toString()
+  .padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+
+const commonPromptInstructions = `
+You are a powerful text-processing utility. Your task is to convert a user's natural language email query into a valid, efficient Gmail API search query string.
+- Use the current date ("${currentDateForLLM}") as a reference for any relative date expressions (e.g., "last week", "month of may").
+- Translate keywords into Gmail search operators (e.g., from:, to:, subject:).
+- For date ranges, use 'after:' and 'before:' (e.g., 'after:2023/01/01 before:2023/01/31').
+- Your response MUST be a JSON object conforming to the required schema.
+`;
+
+const billingTransformPrompt = ai.definePrompt({
+  name: 'billingTransformPrompt',
+  output: { schema: GmailQuerySchema },
+  prompt: `${commonPromptInstructions}
+This is a BILLING query. Focus on financial terms.
+- Broaden the search with terms like '(invoice OR receipt OR bill OR payment OR charge OR order)'.
+- Pay attention to specific senders or merchants mentioned.
+User Query: "{{query}}"`,
+});
+
+const travelTransformPrompt = ai.definePrompt({
+  name: 'travelTransformPrompt',
+  output: { schema: GmailQuerySchema },
+  prompt: `${commonPromptInstructions}
+This is a TRAVEL query. Focus on booking and itinerary terms.
+- Look for keywords like '(flight OR hotel OR car rental OR confirmation OR booking OR itinerary)'.
+- Identify travel companies, airlines, or hotel names.
+User Query: "{{query}}"`,
+});
+
+const promotionsTransformPrompt = ai.definePrompt({
+  name: 'promotionsTransformPrompt',
+  output: { schema: GmailQuerySchema },
+  prompt: `${commonPromptInstructions}
+This is a PROMOTIONS query. Focus on marketing and sales terms.
+- Search for terms like '(sale OR discount OR offer OR % off OR coupon)'.
+- Consider searching within the 'promotions' category label if general: 'category:promotions'.
+User Query: "{{query}}"`,
+});
+
+const generalTransformPrompt = ai.definePrompt({
+  name: 'generalTransformPrompt',
+  output: { schema: GmailQuerySchema },
+  prompt: `${commonPromptInstructions}
+This is a GENERAL query. Perform a standard keyword translation.
+User Query: "{{query}}"`,
+});
+
 // --- Main Flow Definition ---
 
 const queryEmailsFlow = ai.defineFlow(
@@ -115,41 +182,55 @@ const queryEmailsFlow = ai.defineFlow(
     outputSchema: QueryEmailsOutputSchema,
   },
   async (flowInput) => {
-    const now = new Date();
-    const currentDateForLLM = `${now.getFullYear()}-${(now.getMonth() + 1)
-      .toString()
-      .padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    // STEP 1: Categorize the user's query to select the correct agent.
+    console.log('[queryEmailsFlow] Step 1: Categorizing user query.');
+    const categorizePrompt = `You are an expert query routing agent. Your job is to classify the user's email search query into one of the following categories: ${QueryCategorySchema.options.join(', ')}.
+- billing: Queries about invoices, receipts, payments, charges, or orders.
+- travel: Queries about flights, hotels, car rentals, bookings, or itineraries.
+- promotions: Queries about sales, discounts, offers, or coupons.
+- social_media: Queries mentioning platforms like Facebook, Twitter, LinkedIn.
+- general: All other queries that do not fit the above categories.
+Your response MUST be a JSON object conforming to the required schema.
+User Query: "${flowInput.query}"`;
 
-    // STEP 1: Transform natural language query to a Gmail API query string.
-    console.log('[queryEmailsFlow] Step 1: Transforming natural language to Gmail query.');
-    
-    const transformPrompt = `You are a powerful text-processing utility. Your task is to convert a user's natural language email query into a valid, efficient Gmail API search query string. You MUST format your response as a JSON object that conforms to the provided schema.
-
-- Use the current date ("${currentDateForLLM}") as a reference for any relative date expressions (e.g., "last week", "month of may").
-- Translate keywords into Gmail search operators (e.g., from:, to:, subject:).
-- For financial queries mentioning "invoices," "bills," or "charges," broaden the search with terms like '(invoice OR receipt OR bill OR payment)'.
-
-User Query: "${flowInput.query}"
-`;
-
-    const transformResponse = await ai.generate({
-      prompt: transformPrompt,
-      output: { schema: GmailQuerySchema }
+    const categoryResponse = await ai.generate({
+      prompt: categorizePrompt,
+      output: { schema: CategorizeQueryOutputSchema },
     });
-    
-    const transformResult = transformResponse.output;
 
-    if (!transformResult || !transformResult.gmailQueryString) {
+    const category = categoryResponse.output?.category || 'general';
+    console.log(`[queryEmailsFlow] Query categorized as: "${category}"`);
+
+    // STEP 2: Select the specialized agent (prompt) and transform the query.
+    console.log('[queryEmailsFlow] Step 2: Transforming natural language to Gmail query using specialized agent.');
+    let transformPrompt;
+    switch (category) {
+      case 'billing':
+        transformPrompt = billingTransformPrompt;
+        break;
+      case 'travel':
+        transformPrompt = travelTransformPrompt;
+        break;
+      case 'promotions':
+        transformPrompt = promotionsTransformPrompt;
+        break;
+      default:
+        transformPrompt = generalTransformPrompt;
+    }
+
+    const transformResponse = await transformPrompt({ query: flowInput.query });
+    const transformedQuery = transformResponse.output?.gmailQueryString;
+
+    if (!transformedQuery) {
       throw new Error(
-        'AI failed to transform the query. The model response was empty, invalid, or did not contain a query string.'
+        'AI failed to transform the query. The model response was empty or invalid.'
       );
     }
-    const transformedQuery = transformResult.gmailQueryString;
     console.log(
       `[queryEmailsFlow] AI-generated Gmail query: "${transformedQuery}"`
     );
 
-    // STEP 2: Fetch emails from Gmail API using the transformed query.
+    // STEP 3: Fetch emails from Gmail API using the transformed query.
     const emails: FetchedEmailData[] = await fetchGmailMessages(
       flowInput.accessToken,
       transformedQuery,
@@ -166,18 +247,21 @@ User Query: "${flowInput.query}"
       `[queryEmailsFlow] Fetched ${emails.length} emails from Gmail. Now refining with AI.`
     );
 
-    // STEP 3: Use AI to refine and summarize the fetched emails.
-    console.log('[queryEmailsFlow] Step 3: Refining and summarizing fetched emails.');
+    // STEP 4: Use AI to refine and summarize the fetched emails.
+    console.log('[queryEmailsFlow] Step 4: Refining and summarizing fetched emails.');
 
-    const emailsToProcessString = emails.map(email => 
-`---
+    const emailsToProcessString = emails
+      .map(
+        (email) =>
+          `---
 Email ID: ${email.id}
 From: ${email.sender}
 Subject: ${email.subject}
 Timestamp: ${email.timestamp}
 Snippet: "${email.snippet}"
 ---`
-    ).join('\n');
+      )
+      .join('\n');
 
     const refinePrompt = `You are an intelligent email processing agent. Your task is to review a list of emails fetched from Gmail based on a search query.
 For EACH email, you must perform two actions:
@@ -191,10 +275,10 @@ User's Original Query: "${flowInput.query}"
 Here are the emails to process:
 ${emailsToProcessString}
 `;
-    
+
     const refineResponse = await ai.generate({
       prompt: refinePrompt,
-      output: { schema: RefineAndSummarizeOutputSchema }
+      output: { schema: RefineAndSummarizeOutputSchema },
     });
 
     const refineResult = refineResponse.output;
