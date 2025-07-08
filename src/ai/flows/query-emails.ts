@@ -89,16 +89,21 @@ export async function queryEmails(
       `[queryEmails] Critical error during agentic flow execution for query "${input.query}". Error:`,
       error
     );
+    // Create a user-friendly error to display in the UI
+    const friendlyMessage = error.message && error.message.includes('Schema validation failed') 
+      ? `The AI agent failed to understand the query. Please try rephrasing your request.`
+      : `An unexpected server error occurred: ${error.message}`;
+      
     return {
       emailList: [
         {
           id: 'error-critical-flow-error',
           sender: 'MailSage System',
           subject: 'Error: Failed to Process Query',
-          snippet: `An unexpected server error occurred: ${error.message}`,
+          snippet: friendlyMessage,
           timestamp: Date.now(),
           summary:
-            'A critical error occurred on the server while trying to process your request.',
+            'A critical error occurred on the server while trying to process your request. Please check the system logs for more details.',
         },
       ],
     };
@@ -116,7 +121,7 @@ const commonPromptInstructions = `
 You are a powerful text-processing utility. Your task is to convert a user's natural language email query into a valid, efficient Gmail API search query string.
 - Use the current date ("${currentDateForLLM}") as a reference for any relative date expressions (e.g., "last week", "month of may").
 - Translate keywords into Gmail search operators (e.g., from:, to:, subject:).
-- For date ranges, use 'after:' and 'before:' (e.g., 'after:2023/01/01 before:2023/01/31').
+- For date ranges, use 'after:' and 'before:' in YYYY/MM/DD format (e.g., 'after:2023/01/01 before:2023/01/31').
 - Your response MUST be a JSON object conforming to the required schema.
 `;
 
@@ -224,14 +229,11 @@ const queryEmailsFlow = ai.defineFlow(
     outputSchema: QueryEmailsOutputSchema,
   },
   async (flowInput) => {
-    // STEP 1 (REVISED): Invoke an agent with tools to generate the query string.
+    // STEP 1: Invoke an agent with tools to generate the query string.
     console.log('[queryEmailsFlow] Step 1: Invoking agent to generate Gmail query via tool use.');
 
     const agentResponse = await ai.generate({
-      prompt: `You are an expert email search agent. Your goal is to generate a precise Gmail search query string based on the user's request.
-        - Analyze the user's query to understand its intent.
-        - Select and use the single most appropriate tool to generate the query string.
-        - Your final output must be ONLY the JSON object containing the query string from the tool.`,
+      prompt: `You are an expert email search agent. Your goal is to generate a precise Gmail search query string. Analyze the user's query to understand its intent, then select and use the single most appropriate tool to generate the query string.`,
       tools: [billingTool, travelTool, promotionsTool, generalTool],
       output: { schema: GmailQuerySchema },
       input: { query: flowInput.query },
@@ -270,13 +272,16 @@ const queryEmailsFlow = ai.defineFlow(
       Snippet: "${email.snippet}"
       ---`).join('\n');
 
-    const refinePrompt = `You are an intelligent email processing agent. Review a list of emails and for EACH one:
-      1. Relevance Check: Determine if it's truly relevant to the user's original query.
-      2. Summarization: If relevant, create a concise summary focusing on the query's intent.
-      Produce a JSON output with a 'refinedEmails' array. Only include relevant emails in the final list.
-      User's Original Query: "${flowInput.query}"
-      Here are the emails to process:
-      ${emailsToProcessString}`;
+    const refinePrompt = `You are an intelligent email processing agent. Your task is to process a list of emails retrieved based on a user's query. For EACH email provided, you must:
+1. Determine if it is relevant to the user's original query.
+2. Create a concise summary of the email snippet, focusing on what makes it relevant. If it's not relevant, the summary can be a brief note explaining why (e.g., "General marketing email").
+
+Your final output MUST be a JSON object with a 'refinedEmails' array. This array must contain an object for EVERY email you were given. Do not filter any emails out from the final list, just mark their relevance.
+
+User's Original Query: "${flowInput.query}"
+
+Here are the emails to process:
+${emailsToProcessString}`;
 
     const refineResponse = await ai.generate({
       prompt: refinePrompt,
@@ -289,6 +294,8 @@ const queryEmailsFlow = ai.defineFlow(
       throw new Error('AI failed to refine and summarize the fetched emails.');
     }
 
+    // Filter for relevance on the server before sending to the client.
+    // The AI is now instructed to return all emails, so this filter is important.
     const relevantEmails = refineResult.refinedEmails
       .filter((email) => email.isRelevant)
       .map((email) => ({
@@ -304,5 +311,3 @@ const queryEmailsFlow = ai.defineFlow(
     return { emailList: relevantEmails };
   }
 );
-
-    
