@@ -65,14 +65,10 @@ describe('AI Flows Functional Tests', () => {
       genkit.mockReturnValue(mockFlow)
 
       const result = await summarizeEmail({
-        subject: mockEmails[0].subject,
-        content: mockEmails[0].content,
-        sender: mockEmails[0].sender,
+        emailContent: mockEmails[0].content,
       })
 
       expect(result.summary).toBe(mockSummary)
-      expect(result.keyPoints).toBeInstanceOf(Array)
-      expect(result.priority).toMatch(/high|medium|low/)
     })
 
     test('should handle empty email content', async () => {
@@ -83,9 +79,7 @@ describe('AI Flows Functional Tests', () => {
       genkit.mockReturnValue(mockFlow)
 
       const result = await summarizeEmail({
-        subject: 'Empty Email',
-        content: '',
-        sender: 'test@example.com',
+        emailContent: '',
       })
 
       expect(result.summary).toContain('Unable to summarize')
@@ -113,35 +107,23 @@ describe('AI Flows Functional Tests', () => {
   describe('Action Items Extraction', () => {
     test('should extract action items from email content', async () => {
       const mockActionItems = [
-        {
-          task: 'Schedule project update meeting',
-          assignee: 'team',
-          dueDate: 'next week',
-          priority: 'medium',
-        },
-        {
-          task: 'Provide availability',
-          assignee: 'all team members',
-          dueDate: 'ASAP',
-          priority: 'high',
-        },
+        'Schedule project update meeting',
+        'Provide availability for next week'
       ]
 
       const mockFlow = jest.fn().mockResolvedValue({
-        text: () => JSON.stringify(mockActionItems),
+        actionItems: mockActionItems,
       })
       const { genkit } = require('genkit')
       genkit.mockReturnValue(mockFlow)
 
       const result = await extractActionItems({
-        subject: mockEmails[0].subject,
-        content: mockEmails[0].content,
-        sender: mockEmails[0].sender,
+        emailContent: mockEmails[0].content,
       })
 
       expect(result.actionItems).toHaveLength(2)
-      expect(result.actionItems[0].task).toBe('Schedule project update meeting')
-      expect(result.actionItems[1].priority).toBe('high')
+      expect(result.actionItems[0]).toBe('Schedule project update meeting')
+      expect(result.actionItems[1]).toBe('Provide availability for next week')
     })
 
     test('should handle emails with no action items', async () => {
@@ -152,12 +134,14 @@ describe('AI Flows Functional Tests', () => {
       }
 
       const mockFlow = jest.fn().mockResolvedValue({
-        text: () => JSON.stringify([]),
+        actionItems: [],
       })
       const { genkit } = require('genkit')
       genkit.mockReturnValue(mockFlow)
 
-      const result = await extractActionItems(infoEmail)
+      const result = await extractActionItems({
+        emailContent: infoEmail.content,
+      })
 
       expect(result.actionItems).toHaveLength(0)
     })

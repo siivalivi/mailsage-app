@@ -91,7 +91,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   
   // Reset environment variables
-  process.env.NODE_ENV = 'test';
+  delete (process.env as any).NODE_ENV;
+  (process.env as any).NODE_ENV = 'test';
 });
 
 afterEach(() => {
