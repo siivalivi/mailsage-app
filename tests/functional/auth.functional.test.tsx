@@ -1,7 +1,8 @@
+import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { AuthContext } from '../../src/contexts/AuthContext'
-import { SignInButton } from '../../src/components/auth/SignInButton'
-import { SignOutButton } from '../../src/components/auth/SignOutButton'
+import SignInButton from '../../src/components/auth/SignInButton'
+import SignOutButton from '../../src/components/auth/SignOutButton'
 
 // Mock Firebase Auth
 jest.mock('firebase/auth', () => ({
@@ -26,10 +27,11 @@ describe('Authentication Functional Tests', () => {
   }
 
   const mockAuthContext = {
-    user: null,
+    currentUser: null,
     loading: false,
-    signIn: jest.fn(),
-    signOut: jest.fn(),
+    signInWithGoogle: jest.fn(),
+    signOutUser: jest.fn(),
+    getGoogleAccessToken: jest.fn(() => null),
   }
 
   beforeEach(() => {
@@ -51,7 +53,7 @@ describe('Authentication Functional Tests', () => {
       const signInMock = jest.fn()
       
       render(
-        <AuthContext.Provider value={{ ...mockAuthContext, signIn: signInMock }}>
+        <AuthContext.Provider value={{ ...mockAuthContext, signInWithGoogle: signInMock }}>
           <SignInButton />
         </AuthContext.Provider>
       )
@@ -74,7 +76,7 @@ describe('Authentication Functional Tests', () => {
   describe('User Sign Out Flow', () => {
     test('should display sign out button when user is authenticated', async () => {
       render(
-        <AuthContext.Provider value={{ ...mockAuthContext, user: mockUser }}>
+        <AuthContext.Provider value={{ ...mockAuthContext, currentUser: mockUser }}>
           <SignOutButton />
         </AuthContext.Provider>
       )
@@ -88,8 +90,8 @@ describe('Authentication Functional Tests', () => {
       render(
         <AuthContext.Provider value={{ 
           ...mockAuthContext, 
-          user: mockUser,
-          signOut: signOutMock 
+          currentUser: mockUser,
+          signOutUser: signOutMock 
         }}>
           <SignOutButton />
         </AuthContext.Provider>
@@ -113,7 +115,7 @@ describe('Authentication Functional Tests', () => {
       mockLocalStorage.getItem.mockReturnValue(JSON.stringify(mockUser))
 
       render(
-        <AuthContext.Provider value={{ ...mockAuthContext, user: mockUser }}>
+        <AuthContext.Provider value={{ ...mockAuthContext, currentUser: mockUser }}>
           <div>Welcome {mockUser.displayName}</div>
         </AuthContext.Provider>
       )
@@ -134,8 +136,8 @@ describe('Authentication Functional Tests', () => {
       render(
         <AuthContext.Provider value={{ 
           ...mockAuthContext, 
-          user: mockUser,
-          signOut: signOutMock 
+          currentUser: mockUser,
+          signOutUser: signOutMock 
         }}>
           <SignOutButton />
         </AuthContext.Provider>
