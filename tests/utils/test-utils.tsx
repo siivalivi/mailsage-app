@@ -1,4 +1,4 @@
-import { ReactElement } from 'react'
+import React, { ReactElement } from 'react'
 import { render, RenderOptions } from '@testing-library/react'
 import { AuthContext } from '../../src/contexts/AuthContext'
 
@@ -56,10 +56,11 @@ export const mockEmails = [
 ]
 
 export const mockAuthContext = {
-  user: null,
+  currentUser: null,
   loading: false,
-  signIn: jest.fn(),
-  signOut: jest.fn(),
+  signInWithGoogle: jest.fn(),
+  signOutUser: jest.fn(),
+  getGoogleAccessToken: jest.fn(() => null),
 }
 
 // Custom render function with providers
