@@ -108,12 +108,12 @@ export function setupTestEnvironment() {
     writable: true,
     configurable: true
   })
-  process.env.FIREBASE_API_KEY = 'test-firebase-key'
-  process.env.FIREBASE_AUTH_DOMAIN = 'test-project.firebaseapp.com'
-  process.env.FIREBASE_PROJECT_ID = 'test-project'
-  process.env.FIREBASE_STORAGE_BUCKET = 'test-project.appspot.com'
-  process.env.FIREBASE_MESSAGING_SENDER_ID = '123456789'
-  process.env.FIREBASE_APP_ID = 'test-app-id'
+  process.env.NEXT_PUBLIC_FIREBASE_API_KEY = 'test-firebase-key'
+  process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN = 'test-project.firebaseapp.com'
+  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID = 'test-project'
+  process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET = 'test-project.appspot.com'
+  process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID = '123456789'
+  process.env.NEXT_PUBLIC_FIREBASE_APP_ID = 'test-app-id'
   process.env.GMAIL_CLIENT_ID = 'test-gmail-client-id'
   process.env.GMAIL_CLIENT_SECRET = 'test-gmail-client-secret'
   process.env.GMAIL_REFRESH_TOKEN = 'test-gmail-refresh-token'
