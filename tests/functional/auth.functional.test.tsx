@@ -60,7 +60,7 @@ describe('Authentication Functional Tests', () => {
         </AuthContext.Provider>
       )
 
-      expect(screen.getByText('Sign In')).toBeInTheDocument()
+      expect(screen.getByText('Sign in with Google')).toBeInTheDocument()
     })
 
     test('should call signIn function when sign in button is clicked', async () => {
@@ -72,7 +72,7 @@ describe('Authentication Functional Tests', () => {
         </AuthContext.Provider>
       )
 
-      fireEvent.click(screen.getByText('Sign In'))
+      fireEvent.click(screen.getByText('Sign in with Google'))
       expect(signInMock).toHaveBeenCalledTimes(1)
     })
 
@@ -83,7 +83,8 @@ describe('Authentication Functional Tests', () => {
         </AuthContext.Provider>
       )
 
-      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      const button = screen.getByText('Sign in with Google')
+      expect(button).toBeDisabled()
     })
   })
 
@@ -172,7 +173,7 @@ describe('Authentication Functional Tests', () => {
         </AuthContext.Provider>
       )
 
-      fireEvent.click(screen.getByText('Sign In'))
+      fireEvent.click(screen.getByText('Sign in with Google'))
       
       await waitFor(() => {
         expect(signInMock).toHaveBeenCalledTimes(1)
@@ -188,7 +189,7 @@ describe('Authentication Functional Tests', () => {
         </AuthContext.Provider>
       )
 
-      fireEvent.click(screen.getByText('Sign In'))
+      fireEvent.click(screen.getByText('Sign in with Google'))
       
       await waitFor(() => {
         expect(signInMock).toHaveBeenCalledTimes(1)
