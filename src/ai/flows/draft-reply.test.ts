@@ -6,7 +6,16 @@ jest.mock('@/ai/genkit', () => ({
   ai: {
     generate: jest.fn(),
     defineFlow: jest.fn((config, flowFunc) => flowFunc),
-    definePrompt: jest.fn((config) => config), // Return the config for inspection
+    definePrompt: jest.fn((config) => {
+      const mockPromptFunction = jest.fn().mockImplementation((input) => {
+        // Return the same structure that ai.generate would return
+        return (jest.requireMock('@/ai/genkit').ai.generate as jest.Mock)({
+          prompt: config,
+          input: input
+        });
+      });
+      return mockPromptFunction;
+    }),
   },
 }));
 
