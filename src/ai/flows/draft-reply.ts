@@ -59,7 +59,7 @@ const draftReplyFlow = ai.defineFlow(
     outputSchema: DraftReplyOutputSchema,
   },
   async (input) => {
-    const response = await ai.generate(draftReplyPrompt, input);
+    const response = await draftReplyPrompt(input);
 
     if (!response || !response.output) {
       console.error(
