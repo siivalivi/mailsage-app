@@ -102,6 +102,9 @@ export function renderWithProviders(
 
 // Mock environment setup
 export function setupTestEnvironment() {
+  // Setup default AI mocks
+  setupDefaultAIMocks();
+  
   // Mock environment variables
   Object.defineProperty(process.env, 'NODE_ENV', {
     value: 'test',
@@ -205,7 +208,30 @@ export function mockGmailApi() {
   }
 }
 
-// Mock AI/Genkit services
+// Setup default successful AI service mocks
+export function setupDefaultAIMocks() {
+  const { summarizeEmail } = jest.requireMock('@/ai/flows/summarize-email');
+  const { extractActionItems } = jest.requireMock('@/ai/flows/extract-action-items');
+  const { draftReply } = jest.requireMock('@/ai/flows/draft-reply');
+
+  summarizeEmail.mockResolvedValue({
+    summary: 'Test email summary',
+  });
+
+  extractActionItems.mockResolvedValue({
+    actionItems: [
+      'Test task',
+      'Follow up with team',
+      'Review document by Friday',
+    ],
+  });
+
+  draftReply.mockResolvedValue({
+    reply: 'Test reply content',
+  });
+}
+
+// Mock AI/Genkit services (legacy function - kept for compatibility)
 export function mockAIServices() {
   return {
     summarizeEmail: jest.fn().mockResolvedValue({
