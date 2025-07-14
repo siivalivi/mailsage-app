@@ -179,8 +179,8 @@ describe('Authentication Functional Tests', () => {
         expect(signInMock).toHaveBeenCalledTimes(1)
       })
       
-      // Since we expect the error to be thrown, we should verify it was rejected
-      await expect(signInMock).toHaveBeenCalledWith()
+      // The button should remain enabled after error (not stuck in loading state)
+      expect(screen.getByText('Sign in with Google')).not.toBeDisabled()
     })
 
     test('should handle network errors during authentication', async () => {
@@ -198,8 +198,8 @@ describe('Authentication Functional Tests', () => {
         expect(signInMock).toHaveBeenCalledTimes(1)
       })
       
-      // Since we expect the error to be thrown, we should verify it was rejected
-      await expect(signInMock).toHaveBeenCalledWith()
+      // The button should remain enabled after error (not stuck in loading state)
+      expect(screen.getByText('Sign in with Google')).not.toBeDisabled()
     })
   })
 })
