@@ -41,10 +41,10 @@ const summarizeEmailFlow = ai.defineFlow(
     inputSchema: SummarizeEmailInputSchema,
     outputSchema: SummarizeEmailOutputSchema,
   },
-  async input => {
+  async (input) => {
     const response = await ai.generate({
         prompt: summarizeEmailPrompt,
-        input: input,
+        input,
     });
     
     if (!response || !response.output) {

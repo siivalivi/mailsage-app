@@ -89,7 +89,11 @@ export function renderWithProviders(
 // Mock environment setup
 export function setupTestEnvironment() {
   // Mock environment variables
-  process.env.NODE_ENV = 'test'
+  Object.defineProperty(process.env, 'NODE_ENV', {
+    value: 'test',
+    writable: true,
+    configurable: true
+  })
   process.env.FIREBASE_API_KEY = 'test-firebase-key'
   process.env.FIREBASE_AUTH_DOMAIN = 'test-project.firebaseapp.com'
   process.env.FIREBASE_PROJECT_ID = 'test-project'

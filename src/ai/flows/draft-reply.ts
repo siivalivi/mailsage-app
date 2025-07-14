@@ -61,7 +61,7 @@ const draftReplyFlow = ai.defineFlow(
   async (input) => {
     const response = await ai.generate({
       prompt: draftReplyPrompt,
-      input: input,
+      input,
     });
 
     if (!response || !response.output) {

@@ -15,7 +15,7 @@ interface AuthContextType {
   getGoogleAccessToken: () => string | null;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
 
     console.log('[AuthContext] signInWithGoogle: Provider scopes:', JSON.stringify(googleProvider.getScopes()));
-    console.log('[AuthContext] signInWithGoogle: Provider custom parameters:', JSON.stringify(googleProvider.customParameters));
+    console.log('[AuthContext] signInWithGoogle: Provider custom parameters:', JSON.stringify((googleProvider as any).customParameters));
 
     let result: UserCredential | null = null;
     try {
@@ -133,7 +133,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setCurrentUser(result.user);
       
       console.log('[AuthContext] signInWithGoogle: Raw result.credential object:', result.credential);
-      const credential = result.credential as OAuthCredential | null;
+      const credential = result.credential ? result.credential as OAuthCredential : null;
       let obtainedGmailToken: string | null = null;
 
       if (credential && credential.accessToken) {
@@ -142,7 +142,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else if ((result as any)._tokenResponse?.oauthAccessToken) {
         // Fallback to _tokenResponse if result.credential doesn't yield the token
         obtainedGmailToken = (result as any)._tokenResponse.oauthAccessToken;
-        console.log('[AuthContext] signInWithGoogle: Google OAuth AccessToken for Google Services OBTAINED via _tokenResponse.oauthAccessToken:', obtainedGmailToken.substring(0, 20) + "...");
+        console.log('[AuthContext] signInWithGoogle: Google OAuth AccessToken for Google Services OBTAINED via _tokenResponse.oauthAccessToken:', obtainedGmailToken?.substring(0, 20) + "...");
         // Additionally log the scopes from _tokenResponse.rawUserInfo to confirm gmail.readonly was granted
         const rawUserInfo = (result as any)._tokenResponse?.rawUserInfo;
         if (rawUserInfo) {

@@ -68,7 +68,7 @@ const extractActionItemsFlow = ai.defineFlow(
   async (input) => {
     const response = await ai.generate({
       prompt: extractActionItemsPrompt,
-      input: input,
+      input,
     });
 
     if (!response || !response.output) {
