@@ -167,7 +167,7 @@ describe('Authentication Functional Tests', () => {
       const signInMock = jest.fn().mockRejectedValue(new Error('Authentication failed'))
       
       render(
-        <AuthContext.Provider value={{ ...mockAuthContext, signIn: signInMock }}>
+        <AuthContext.Provider value={{ ...mockAuthContext, signInWithGoogle: signInMock }}>
           <SignInButton />
         </AuthContext.Provider>
       )
@@ -183,7 +183,7 @@ describe('Authentication Functional Tests', () => {
       const signInMock = jest.fn().mockRejectedValue(new Error('Network error'))
       
       render(
-        <AuthContext.Provider value={{ ...mockAuthContext, signIn: signInMock }}>
+        <AuthContext.Provider value={{ ...mockAuthContext, signInWithGoogle: signInMock }}>
           <SignInButton />
         </AuthContext.Provider>
       )
