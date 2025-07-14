@@ -27,7 +27,7 @@ export default function EmailList({ emails, isLoading }: EmailListProps) {
         <Inbox className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
         <h3 className="text-xl font-semibold text-foreground mb-2">No Emails Found</h3>
         <p className="text-muted-foreground">
-          Try a different query or check back later. <br/> If you haven't searched yet, your results will appear here.
+          Try a different query or check back later. <br/> If you haven&apos;t searched yet, your results will appear here.
         </p>
       </div>
     );

@@ -56,9 +56,9 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
       const result = await summarizeEmail(input);
       setEmail(prev => ({ ...prev, summary: result.summary }));
       toast({ title: 'Email Summarized', description: 'The summary has been generated successfully.' });
-    } catch (error: any) {
+    } catch (error: Error | unknown) {
       console.error('Error summarizing email:', error);
-      toast({ variant: 'destructive', title: 'Summarization Failed', description: error.message || 'An error occurred while summarizing the email.' });
+      toast({ variant: 'destructive', title: 'Summarization Failed', description: error instanceof Error ? error.message : 'An error occurred while summarizing the email.' });
     } finally {
       setIsSummarizing(false);
     }
@@ -77,9 +77,9 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
       const result = await draftReply(input);
       setDraft(result.reply);
       toast({ title: 'Reply Drafted', description: 'The draft has been generated successfully.' });
-    } catch (error: any) {
+    } catch (error: Error | unknown) {
       console.error('Error drafting reply:', error);
-      toast({ variant: 'destructive', title: 'Drafting Failed', description: error.message || 'An error occurred while drafting the reply.' });
+      toast({ variant: 'destructive', title: 'Drafting Failed', description: error instanceof Error ? error.message : 'An error occurred while drafting the reply.' });
     } finally {
       setIsDrafting(false);
     }
@@ -104,9 +104,9 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
       const result = await extractActionItems(input);
       setActionItems(result.actionItems);
       toast({ title: 'Action Items Extracted', description: `Found ${result.actionItems.length} action item(s).` });
-    } catch (error: any) {
+    } catch (error: Error | unknown) {
       console.error('Error extracting action items:', error);
-      toast({ variant: 'destructive', title: 'Extraction Failed', description: error.message || 'An error occurred while extracting action items.' });
+      toast({ variant: 'destructive', title: 'Extraction Failed', description: error instanceof Error ? error.message : 'An error occurred while extracting action items.' });
     } finally {
       setIsExtracting(false);
     }
@@ -177,7 +177,7 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
               )}
               {!isSummarizing && (!email.summary || email.summary === "No summary available.") && (
                 <p className="text-muted-foreground italic text-sm">
-                  No summary available. Click 'Summarize' to generate one.
+                  No summary available. Click &apos;Summarize&apos; to generate one.
                 </p>
               )}
               {email.summary && email.summary !== "No summary available." && (
@@ -213,7 +213,7 @@ export default function EmailView({ email: initialEmail }: EmailViewProps) {
               )}
               {!isExtracting && actionItems === null && (
                 <p className="text-muted-foreground italic text-sm">
-                  Click 'Extract Actions' to find tasks, questions, and deadlines.
+                  Click &apos;Extract Actions&apos; to find tasks, questions, and deadlines.
                 </p>
               )}
               {!isExtracting && actionItems && actionItems.length === 0 && (
