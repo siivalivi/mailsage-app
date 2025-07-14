@@ -89,18 +89,10 @@ jest.mock('@genkit-ai/googleai', () => ({
   googleAI: jest.fn(),
 }));
 
-// Mock AI flow functions - these can be overridden in individual tests
-jest.mock('@/ai/flows/summarize-email', () => ({
-  summarizeEmail: jest.fn(),
-}));
-
-jest.mock('@/ai/flows/extract-action-items', () => ({
-  extractActionItems: jest.fn(),
-}));
-
-jest.mock('@/ai/flows/draft-reply', () => ({
-  draftReply: jest.fn(),
-}));
+// AI flow functions are NOT globally mocked here
+// They are mocked individually in test files that need them
+// This allows unit tests to test the actual implementations
+// while functional tests can mock them at a higher level
 
 // Mock lucide-react icons
 jest.mock('lucide-react', () => ({

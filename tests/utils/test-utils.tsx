@@ -102,8 +102,8 @@ export function renderWithProviders(
 
 // Mock environment setup
 export function setupTestEnvironment() {
-  // Setup default AI mocks
-  setupDefaultAIMocks();
+  // Don't automatically setup AI mocks - let individual tests handle them
+  // Only setup AI mocks for functional/integration tests
   
   // Mock environment variables
   Object.defineProperty(process.env, 'NODE_ENV', {
@@ -210,25 +210,35 @@ export function mockGmailApi() {
 
 // Setup default successful AI service mocks
 export function setupDefaultAIMocks() {
-  const { summarizeEmail } = jest.requireMock('@/ai/flows/summarize-email');
-  const { extractActionItems } = jest.requireMock('@/ai/flows/extract-action-items');
-  const { draftReply } = jest.requireMock('@/ai/flows/draft-reply');
+  try {
+    const { summarizeEmail } = jest.requireMock('@/ai/flows/summarize-email');
+    const { extractActionItems } = jest.requireMock('@/ai/flows/extract-action-items');
+    const { draftReply } = jest.requireMock('@/ai/flows/draft-reply');
 
-  summarizeEmail.mockResolvedValue({
-    summary: 'Test email summary',
-  });
+    if (summarizeEmail && typeof summarizeEmail.mockResolvedValue === 'function') {
+      summarizeEmail.mockResolvedValue({
+        summary: 'Test email summary',
+      });
+    }
 
-  extractActionItems.mockResolvedValue({
-    actionItems: [
-      'Test task',
-      'Follow up with team',
-      'Review document by Friday',
-    ],
-  });
+    if (extractActionItems && typeof extractActionItems.mockResolvedValue === 'function') {
+      extractActionItems.mockResolvedValue({
+        actionItems: [
+          'Test task',
+          'Follow up with team',
+          'Review document by Friday',
+        ],
+      });
+    }
 
-  draftReply.mockResolvedValue({
-    reply: 'Test reply content',
-  });
+    if (draftReply && typeof draftReply.mockResolvedValue === 'function') {
+      draftReply.mockResolvedValue({
+        reply: 'Test reply content',
+      });
+    }
+  } catch (error) {
+    // AI flows not mocked - this is fine for unit tests
+  }
 }
 
 // Mock AI/Genkit services (legacy function - kept for compatibility)

@@ -25,6 +25,9 @@ describe('summarizeEmail Flow', () => {
     mockedAIGenerate.mockClear();
     (ai.defineFlow as jest.Mock).mockClear();
     (ai.definePrompt as jest.Mock).mockClear();
+    
+    // Reset any mock implementations that might have been set by global setup
+    mockedAIGenerate.mockReset();
   });
 
   it('should call the AI with the correct content and return the summary', async () => {

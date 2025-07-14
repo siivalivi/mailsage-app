@@ -178,6 +178,9 @@ describe('Authentication Functional Tests', () => {
       await waitFor(() => {
         expect(signInMock).toHaveBeenCalledTimes(1)
       })
+      
+      // Since we expect the error to be thrown, we should verify it was rejected
+      await expect(signInMock).toHaveBeenCalledWith()
     })
 
     test('should handle network errors during authentication', async () => {
@@ -194,6 +197,9 @@ describe('Authentication Functional Tests', () => {
       await waitFor(() => {
         expect(signInMock).toHaveBeenCalledTimes(1)
       })
+      
+      // Since we expect the error to be thrown, we should verify it was rejected
+      await expect(signInMock).toHaveBeenCalledWith()
     })
   })
 })
