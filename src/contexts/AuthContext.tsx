@@ -132,8 +132,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.log('[AuthContext] signInWithGoogle: User object from result:', result.user);
       setCurrentUser(result.user);
       
-      console.log('[AuthContext] signInWithGoogle: Raw result.credential object:', result.credential);
-      const credential = result.credential ? result.credential as OAuthCredential : null;
+      console.log('[AuthContext] signInWithGoogle: Raw result.credential object:', (result as any).credential);
+      const credential = (result as any).credential ? (result as any).credential as OAuthCredential : null;
       let obtainedGmailToken: string | null = null;
 
       if (credential && credential.accessToken) {

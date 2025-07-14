@@ -24,7 +24,21 @@ describe('Authentication Functional Tests', () => {
     email: 'test@example.com',
     displayName: 'Test User',
     photoURL: 'https://example.com/photo.jpg',
-  }
+    emailVerified: true,
+    isAnonymous: false,
+    metadata: {
+      creationTime: '2024-01-01T00:00:00.000Z',
+      lastSignInTime: '2024-01-01T00:00:00.000Z',
+    },
+    providerData: [],
+    refreshToken: 'test-refresh-token',
+    tenantId: null,
+    delete: jest.fn(),
+    getIdToken: jest.fn(),
+    getIdTokenResult: jest.fn(),
+    reload: jest.fn(),
+    toJSON: jest.fn(),
+  } as any
 
   const mockAuthContext = {
     currentUser: null,
