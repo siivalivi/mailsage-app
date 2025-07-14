@@ -210,17 +210,12 @@ export function mockAIServices() {
   return {
     summarizeEmail: jest.fn().mockResolvedValue({
       summary: 'Test email summary',
-      keyPoints: ['Key point 1', 'Key point 2'],
-      priority: 'medium',
     }),
     extractActionItems: jest.fn().mockResolvedValue({
       actionItems: [
-        {
-          task: 'Test task',
-          assignee: 'test user',
-          dueDate: '2024-01-07',
-          priority: 'medium',
-        },
+        'Test task',
+        'Follow up with team',
+        'Review document by Friday',
       ],
     }),
     generateDailyBriefing: jest.fn().mockResolvedValue({
@@ -237,10 +232,7 @@ export function mockAIServices() {
       actionItems: ['Test action item'],
     }),
     draftReply: jest.fn().mockResolvedValue({
-      subject: 'Re: Test Subject',
-      content: 'Test reply content',
-      tone: 'professional',
-      confidence: 0.85,
+      reply: 'Test reply content',
     }),
     queryEmails: jest.fn().mockResolvedValue({
       query: 'test query',

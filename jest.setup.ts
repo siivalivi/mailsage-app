@@ -91,15 +91,25 @@ jest.mock('@genkit-ai/googleai', () => ({
 
 // Mock AI flow functions
 jest.mock('@/ai/flows/summarize-email', () => ({
-  summarizeEmail: jest.fn(),
+  summarizeEmail: jest.fn().mockResolvedValue({
+    summary: 'Test email summary',
+  }),
 }));
 
 jest.mock('@/ai/flows/extract-action-items', () => ({
-  extractActionItems: jest.fn(),
+  extractActionItems: jest.fn().mockResolvedValue({
+    actionItems: [
+      'Test task',
+      'Follow up with team',
+      'Review document by Friday',
+    ],
+  }),
 }));
 
 jest.mock('@/ai/flows/draft-reply', () => ({
-  draftReply: jest.fn(),
+  draftReply: jest.fn().mockResolvedValue({
+    reply: 'Test reply content',
+  }),
 }));
 
 // Mock lucide-react icons
