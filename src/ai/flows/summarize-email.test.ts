@@ -8,11 +8,19 @@ jest.mock('@/ai/genkit', () => ({
     generate: jest.fn(),
     // Mock defineFlow to simply return the function passed to it, so we can test the logic within.
     defineFlow: jest.fn((config, flowFunc) => flowFunc),
-    // Mock definePrompt to return a dummy object. The prompt itself is tested by what we pass to ai.generate.
-    definePrompt: jest.fn((config) => ({
-      name: config.name,
-      config: config.config,
-    })),
+    // Mock definePrompt to return a function that calls ai.generate internally
+    definePrompt: jest.fn((config) => {
+      const mockPromptFunction = jest.fn().mockImplementation((input) => {
+        // Return the same structure that ai.generate would return
+        return (jest.requireMock('@/ai/genkit').ai.generate as jest.Mock)({
+          prompt: config,
+          input: input
+        });
+      });
+      mockPromptFunction.name = config.name;
+      mockPromptFunction.config = config.config;
+      return mockPromptFunction;
+    }),
   },
 }));
 
