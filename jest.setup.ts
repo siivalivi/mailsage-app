@@ -89,6 +89,58 @@ jest.mock('@genkit-ai/googleai', () => ({
   googleAI: jest.fn(),
 }));
 
+// Mock AI flow functions
+jest.mock('@/ai/flows/summarize-email', () => ({
+  summarizeEmail: jest.fn(),
+}));
+
+jest.mock('@/ai/flows/extract-action-items', () => ({
+  extractActionItems: jest.fn(),
+}));
+
+jest.mock('@/ai/flows/draft-reply', () => ({
+  draftReply: jest.fn(),
+}));
+
+// Mock lucide-react icons
+jest.mock('lucide-react', () => ({
+  Chrome: () => null,
+  LogOut: () => null,
+  Inbox: () => null,
+  Loader2: () => null,
+  Search: () => null,
+  Mail: () => null,
+  Clock: () => null,
+  User: () => null,
+  Calendar: () => null,
+  FileText: () => null,
+  Send: () => null,
+  Archive: () => null,
+  Trash: () => null,
+  Star: () => null,
+  Reply: () => null,
+  ReplyAll: () => null,
+  Forward: () => null,
+  MoreHorizontal: () => null,
+  Download: () => null,
+  ExternalLink: () => null,
+  X: () => null,
+  Check: () => null,
+  AlertCircle: () => null,
+  Info: () => null,
+  Plus: () => null,
+  Minus: () => null,
+  Edit: () => null,
+  Save: () => null,
+  Settings: () => null,
+  Home: () => null,
+  Menu: () => null,
+  ChevronLeft: () => null,
+  ChevronRight: () => null,
+  ChevronUp: () => null,
+  ChevronDown: () => null,
+}));
+
 // Global test setup
 beforeEach(() => {
   // Clear all mocks before each test
