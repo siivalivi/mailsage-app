@@ -17,8 +17,11 @@ jest.mock('@/ai/genkit', () => ({
           input: input
         });
       });
-      mockPromptFunction.name = config.name;
-      mockPromptFunction.config = config.config;
+      // Add properties without trying to assign to read-only properties
+      Object.defineProperty(mockPromptFunction, 'promptName', {
+        value: config.name,
+        writable: false
+      });
       return mockPromptFunction;
     }),
   },
