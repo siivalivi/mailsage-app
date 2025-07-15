@@ -136,7 +136,7 @@ Mike`
     test('should draft casual reply when specified', async () => {
       const testEmail = {
         emailContent: 'Hey, are you free for lunch tomorrow?',
-        replyTone: 'casual'
+        replyTone: 'casual' as const
       };
 
       mockDraftReply.mockResolvedValue({
