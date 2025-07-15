@@ -1,6 +1,19 @@
 {
-  "apphosting": {
-    "backend": "mailsageprod",
-    "source": "."
-  }
+  "hosting": [
+    {
+      "target": "mailsageprod",
+      "public": "out",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ]
 }
