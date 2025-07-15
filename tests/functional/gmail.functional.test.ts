@@ -3,12 +3,8 @@ import { mockGmailApi, mockUser } from '../utils/test-utils';
 
 // Mock Gmail service
 jest.mock('@/services/gmailService', () => ({
-  fetchEmails: jest.fn(),
-  sendEmail: jest.fn(),
-  markAsRead: jest.fn(),
-  archiveEmail: jest.fn(),
-  searchEmails: jest.fn(),
-  getEmailDetails: jest.fn(),
+  fetchGmailMessages: jest.fn(),
+  fetchGmailMessageBody: jest.fn(),
 }));
 
 // Mock googleapis
@@ -21,14 +17,10 @@ jest.mock('googleapis', () => ({
   },
 }));
 
-import { fetchEmails, sendEmail, markAsRead, archiveEmail, searchEmails, getEmailDetails } from '@/services/gmailService';
+import { fetchGmailMessages, fetchGmailMessageBody } from '@/services/gmailService';
 
-const mockFetchEmails = fetchEmails as jest.MockedFunction<typeof fetchEmails>;
-const mockSendEmail = sendEmail as jest.MockedFunction<typeof sendEmail>;
-const mockMarkAsRead = markAsRead as jest.MockedFunction<typeof markAsRead>;
-const mockArchiveEmail = archiveEmail as jest.MockedFunction<typeof archiveEmail>;
-const mockSearchEmails = searchEmails as jest.MockedFunction<typeof searchEmails>;
-const mockGetEmailDetails = getEmailDetails as jest.MockedFunction<typeof getEmailDetails>;
+const mockFetchGmailMessages = fetchGmailMessages as jest.MockedFunction<typeof fetchGmailMessages>;
+const mockFetchGmailMessageBody = fetchGmailMessageBody as jest.MockedFunction<typeof fetchGmailMessageBody>;
 
 describe('Gmail Integration Functional Tests', () => {
   beforeEach(() => {
@@ -38,300 +30,166 @@ describe('Gmail Integration Functional Tests', () => {
     process.env.GMAIL_REFRESH_TOKEN = 'test-refresh-token';
   });
 
-  describe('Email Fetching Workflow', () => {
-    test('should fetch recent emails from Gmail API', async () => {
-      const mockEmails = [
+  describe('Gmail Messages Fetching Workflow', () => {
+    test('should fetch Gmail messages from API', async () => {
+      const mockGmailMessages = [
         {
           id: '1',
           threadId: 'thread-1',
-          subject: 'Project Update',
-          sender: 'john@company.com',
-          content: 'Here is the latest project update...',
-          date: '2024-01-15T10:00:00Z',
-          isRead: false,
-          hasAttachments: false,
-          attachments: [],
-          labels: ['INBOX', 'IMPORTANT'],
+          labelIds: ['INBOX', 'IMPORTANT'],
+          snippet: 'Here is the latest project update...',
+          payload: {
+            headers: [
+              { name: 'Subject', value: 'Project Update' },
+              { name: 'From', value: 'john@company.com' },
+              { name: 'Date', value: '2024-01-15T10:00:00Z' }
+            ]
+          }
         },
         {
           id: '2',
           threadId: 'thread-2',
-          subject: 'Meeting Request',
-          sender: 'sarah@client.com',
-          content: 'Can we schedule a meeting for next week?',
-          date: '2024-01-15T11:30:00Z',
-          isRead: false,
-          hasAttachments: false,
-          attachments: [],
-          labels: ['INBOX'],
+          labelIds: ['INBOX'],
+          snippet: 'Can we schedule a meeting for next week?',
+          payload: {
+            headers: [
+              { name: 'Subject', value: 'Meeting Request' },
+              { name: 'From', value: 'sarah@client.com' },
+              { name: 'Date', value: '2024-01-15T11:30:00Z' }
+            ]
+          }
         },
       ];
 
-      mockFetchEmails.mockResolvedValue(mockEmails);
+      mockFetchGmailMessages.mockResolvedValue(mockGmailMessages);
 
-      const result = await fetchEmails(mockUser, 10);
+      const result = await fetchGmailMessages('test-access-token', 10);
 
-      expect(mockFetchEmails).toHaveBeenCalledWith(mockUser, 10);
+      expect(mockFetchGmailMessages).toHaveBeenCalledWith('test-access-token', 10);
       expect(result).toHaveLength(2);
-      expect(result[0].subject).toBe('Project Update');
-      expect(result[1].subject).toBe('Meeting Request');
+      expect(result[0].id).toBe('1');
+      expect(result[1].id).toBe('2');
     });
 
     test('should handle Gmail API rate limiting gracefully', async () => {
-      mockFetchEmails.mockRejectedValue(new Error('Rate limit exceeded'));
+      mockFetchGmailMessages.mockRejectedValue(new Error('Rate limit exceeded'));
 
-      await expect(fetchEmails(mockUser, 10)).rejects.toThrow('Rate limit exceeded');
+      await expect(fetchGmailMessages('test-access-token', 10)).rejects.toThrow('Rate limit exceeded');
     });
 
     test('should handle authentication errors', async () => {
-      mockFetchEmails.mockRejectedValue(new Error('Authentication failed'));
+      mockFetchGmailMessages.mockRejectedValue(new Error('Authentication failed'));
 
-      await expect(fetchEmails(mockUser, 10)).rejects.toThrow('Authentication failed');
+      await expect(fetchGmailMessages('test-access-token', 10)).rejects.toThrow('Authentication failed');
     });
   });
 
-  describe('Email Details Retrieval', () => {
-    test('should get detailed email information', async () => {
-      const mockEmailDetails = {
+  describe('Gmail Message Body Retrieval', () => {
+    test('should fetch Gmail message body', async () => {
+      const mockMessageBody = {
         id: '1',
         threadId: 'thread-1',
-        subject: 'Quarterly Report',
-        sender: 'finance@company.com',
-        recipients: ['team@company.com'],
-        content: 'Please find the quarterly report attached...',
-        date: '2024-01-15T14:00:00Z',
-        isRead: false,
-        hasAttachments: true,
-        attachments: [
-          {
-            filename: 'Q4_Report.pdf',
-            mimeType: 'application/pdf',
-            size: 2048576,
-          },
-        ],
-        labels: ['INBOX', 'CATEGORY_UPDATES'],
+        payload: {
+          headers: [
+            { name: 'Subject', value: 'Quarterly Report' },
+            { name: 'From', value: 'finance@company.com' },
+            { name: 'Date', value: '2024-01-15T14:00:00Z' }
+          ],
+          body: {
+            data: 'UGxlYXNlIGZpbmQgdGhlIHF1YXJ0ZXJseSByZXBvcnQgYXR0YWNoZWQ=', // base64 encoded
+            size: 123
+          }
+        }
       };
 
-      mockGetEmailDetails.mockResolvedValue(mockEmailDetails);
+      mockFetchGmailMessageBody.mockResolvedValue(mockMessageBody);
 
-      const result = await getEmailDetails(mockUser, '1');
+      const result = await fetchGmailMessageBody('test-access-token', '1');
 
-      expect(mockGetEmailDetails).toHaveBeenCalledWith(mockUser, '1');
-      expect(result.subject).toBe('Quarterly Report');
-      expect(result.hasAttachments).toBe(true);
-      expect(result.attachments).toHaveLength(1);
-      expect(result.attachments[0].filename).toBe('Q4_Report.pdf');
+      expect(mockFetchGmailMessageBody).toHaveBeenCalledWith('test-access-token', '1');
+      expect(result.id).toBe('1');
+      expect(result.payload.body.data).toBeTruthy();
     });
 
-    test('should handle email not found', async () => {
-      mockGetEmailDetails.mockRejectedValue(new Error('Email not found'));
+    test('should handle message not found', async () => {
+      mockFetchGmailMessageBody.mockRejectedValue(new Error('Message not found'));
 
-      await expect(getEmailDetails(mockUser, 'nonexistent')).rejects.toThrow('Email not found');
+      await expect(fetchGmailMessageBody('test-access-token', 'nonexistent')).rejects.toThrow('Message not found');
     });
   });
 
-  describe('Email Search Functionality', () => {
-    test('should search emails by subject', async () => {
-      const mockSearchResults = [
+  describe('End-to-End Gmail API Workflow', () => {
+    test('should complete full Gmail API workflow', async () => {
+      // Mock Gmail messages
+      const mockGmailMessages = [
         {
           id: '1',
           threadId: 'thread-1',
-          subject: 'Project Meeting Notes',
-          sender: 'john@company.com',
-          content: 'Meeting notes from today...',
-          date: '2024-01-15T09:00:00Z',
-          isRead: true,
-          hasAttachments: false,
-          attachments: [],
-          labels: ['INBOX'],
-        },
+          labelIds: ['INBOX', 'IMPORTANT'],
+          snippet: 'Please review this important update...',
+          payload: {
+            headers: [
+              { name: 'Subject', value: 'Important Update' },
+              { name: 'From', value: 'boss@company.com' },
+              { name: 'Date', value: '2024-01-15T12:00:00Z' }
+            ]
+          }
+        }
       ];
 
-      mockSearchEmails.mockResolvedValue(mockSearchResults);
-
-      const result = await searchEmails(mockUser, 'subject:project');
-
-      expect(mockSearchEmails).toHaveBeenCalledWith(mockUser, 'subject:project');
-      expect(result).toHaveLength(1);
-      expect(result[0].subject).toContain('Project');
-    });
-
-    test('should search emails by sender', async () => {
-      const mockSearchResults = [
-        {
-          id: '2',
-          threadId: 'thread-2',
-          subject: 'Follow-up Question',
-          sender: 'client@external.com',
-          content: 'I have a follow-up question...',
-          date: '2024-01-15T16:00:00Z',
-          isRead: false,
-          hasAttachments: false,
-          attachments: [],
-          labels: ['INBOX'],
-        },
-      ];
-
-      mockSearchEmails.mockResolvedValue(mockSearchResults);
-
-      const result = await searchEmails(mockUser, 'from:client@external.com');
-
-      expect(result).toHaveLength(1);
-      expect(result[0].sender).toBe('client@external.com');
-    });
-
-    test('should handle empty search results', async () => {
-      mockSearchEmails.mockResolvedValue([]);
-
-      const result = await searchEmails(mockUser, 'subject:nonexistent');
-
-      expect(result).toHaveLength(0);
-    });
-  });
-
-  describe('Email Actions Workflow', () => {
-    test('should mark email as read', async () => {
-      mockMarkAsRead.mockResolvedValue(true);
-
-      const result = await markAsRead(mockUser, '1');
-
-      expect(mockMarkAsRead).toHaveBeenCalledWith(mockUser, '1');
-      expect(result).toBe(true);
-    });
-
-    test('should archive email', async () => {
-      mockArchiveEmail.mockResolvedValue(true);
-
-      const result = await archiveEmail(mockUser, '1');
-
-      expect(mockArchiveEmail).toHaveBeenCalledWith(mockUser, '1');
-      expect(result).toBe(true);
-    });
-
-    test('should handle email action failures', async () => {
-      mockMarkAsRead.mockRejectedValue(new Error('Failed to mark as read'));
-
-      await expect(markAsRead(mockUser, '1')).rejects.toThrow('Failed to mark as read');
-    });
-  });
-
-  describe('Email Sending Workflow', () => {
-    test('should send email successfully', async () => {
-      const emailToSend = {
-        to: 'recipient@company.com',
-        subject: 'Test Email',
-        body: 'This is a test email.',
-        cc: [],
-        bcc: [],
-      };
-
-      mockSendEmail.mockResolvedValue({
-        id: 'sent-123',
-        threadId: 'thread-new',
-        success: true,
-      });
-
-      const result = await sendEmail(mockUser, emailToSend);
-
-      expect(mockSendEmail).toHaveBeenCalledWith(mockUser, emailToSend);
-      expect(result.success).toBe(true);
-      expect(result.id).toBe('sent-123');
-    });
-
-    test('should handle email sending failures', async () => {
-      const emailToSend = {
-        to: 'invalid@email',
-        subject: 'Test Email',
-        body: 'This is a test email.',
-        cc: [],
-        bcc: [],
-      };
-
-      mockSendEmail.mockRejectedValue(new Error('Invalid email address'));
-
-      await expect(sendEmail(mockUser, emailToSend)).rejects.toThrow('Invalid email address');
-    });
-  });
-
-  describe('End-to-End Email Management Workflow', () => {
-    test('should complete full email workflow', async () => {
-      // Mock data for complete workflow
-      const mockEmails = [
-        {
-          id: '1',
-          threadId: 'thread-1',
-          subject: 'Important Update',
-          sender: 'boss@company.com',
-          content: 'Please review this important update...',
-          date: '2024-01-15T12:00:00Z',
-          isRead: false,
-          hasAttachments: false,
-          attachments: [],
-          labels: ['INBOX', 'IMPORTANT'],
-        },
-      ];
-
-      const mockEmailDetails = {
-        ...mockEmails[0],
-        recipients: ['team@company.com'],
-        content: 'Please review this important update and provide feedback by tomorrow.',
-      };
-
-      const replyEmail = {
-        to: 'boss@company.com',
-        subject: 'Re: Important Update',
-        body: 'Thank you for the update. I will review and provide feedback by tomorrow.',
-        cc: [],
-        bcc: [],
+      // Mock message body
+      const mockMessageBody = {
+        id: '1',
+        threadId: 'thread-1',
+        payload: {
+          headers: [
+            { name: 'Subject', value: 'Important Update' },
+            { name: 'From', value: 'boss@company.com' },
+            { name: 'Date', value: '2024-01-15T12:00:00Z' }
+          ],
+          body: {
+            data: 'UGxlYXNlIHJldmlldyB0aGlzIGltcG9ydGFudCB1cGRhdGU=', // base64 encoded message
+            size: 456
+          }
+        }
       };
 
       // Setup mocks
-      mockFetchEmails.mockResolvedValue(mockEmails);
-      mockGetEmailDetails.mockResolvedValue(mockEmailDetails);
-      mockMarkAsRead.mockResolvedValue(true);
-      mockSendEmail.mockResolvedValue({
-        id: 'reply-123',
-        threadId: 'thread-1',
-        success: true,
-      });
+      mockFetchGmailMessages.mockResolvedValue(mockGmailMessages);
+      mockFetchGmailMessageBody.mockResolvedValue(mockMessageBody);
 
-      // Execute complete workflow
-      const emails = await fetchEmails(mockUser, 10);
-      const emailDetails = await getEmailDetails(mockUser, emails[0].id);
-      const markReadResult = await markAsRead(mockUser, emails[0].id);
-      const replyResult = await sendEmail(mockUser, replyEmail);
+      // Execute workflow
+      const messages = await fetchGmailMessages('test-access-token', 10);
+      const messageBody = await fetchGmailMessageBody('test-access-token', messages[0].id);
 
       // Verify workflow completion
-      expect(emails).toHaveLength(1);
-      expect(emailDetails.subject).toBe('Important Update');
-      expect(markReadResult).toBe(true);
-      expect(replyResult.success).toBe(true);
+      expect(messages).toHaveLength(1);
+      expect(messages[0].id).toBe('1');
+      expect(messageBody.payload.body.data).toBeTruthy();
 
       // Verify all services were called
-      expect(mockFetchEmails).toHaveBeenCalled();
-      expect(mockGetEmailDetails).toHaveBeenCalled();
-      expect(mockMarkAsRead).toHaveBeenCalled();
-      expect(mockSendEmail).toHaveBeenCalled();
+      expect(mockFetchGmailMessages).toHaveBeenCalled();
+      expect(mockFetchGmailMessageBody).toHaveBeenCalled();
     });
   });
 
   describe('Error Handling and Resilience', () => {
     test('should handle Gmail API quota exceeded', async () => {
-      mockFetchEmails.mockRejectedValue(new Error('Quota exceeded'));
+      mockFetchGmailMessages.mockRejectedValue(new Error('Quota exceeded'));
 
-      await expect(fetchEmails(mockUser, 10)).rejects.toThrow('Quota exceeded');
+      await expect(fetchGmailMessages('test-access-token', 10)).rejects.toThrow('Quota exceeded');
     });
 
     test('should handle network connectivity issues', async () => {
-      mockSearchEmails.mockRejectedValue(new Error('Network error'));
+      mockFetchGmailMessageBody.mockRejectedValue(new Error('Network error'));
 
-      await expect(searchEmails(mockUser, 'test')).rejects.toThrow('Network error');
+      await expect(fetchGmailMessageBody('test-access-token', '1')).rejects.toThrow('Network error');
     });
 
     test('should handle invalid OAuth tokens', async () => {
-      mockFetchEmails.mockRejectedValue(new Error('Invalid credentials'));
+      mockFetchGmailMessages.mockRejectedValue(new Error('Invalid credentials'));
 
-      await expect(fetchEmails(mockUser, 10)).rejects.toThrow('Invalid credentials');
+      await expect(fetchGmailMessages('invalid-token', 10)).rejects.toThrow('Invalid credentials');
     });
   });
 });

@@ -119,7 +119,7 @@ Mike`
     test('should draft professional reply for business email', async () => {
       const testEmail = {
         emailContent: 'Can we schedule a meeting to discuss the project timeline?',
-        replyTone: 'professional'
+        replyTone: 'formal' as const
       };
 
       mockDraftReply.mockResolvedValue({
@@ -188,7 +188,7 @@ Alex`
       // Execute workflow
       const summaryResult = await summarizeEmail({ emailContent: testEmail.emailContent });
       const actionItemsResult = await extractActionItems({ emailContent: testEmail.emailContent });
-      const replyResult = await draftReply({ emailContent: testEmail.emailContent, replyTone: 'professional' });
+      const replyResult = await draftReply({ emailContent: testEmail.emailContent, replyTone: 'formal' });
 
       // Verify complete workflow
       expect(summaryResult.summary).toContain('marketing campaign');
