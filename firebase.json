@@ -1,0 +1,6 @@
+{
+  "apphosting": {
+    "backend": "mailsageprod",
+    "source": "."
+  }
+}

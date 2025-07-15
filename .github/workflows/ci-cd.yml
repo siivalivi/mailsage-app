@@ -87,6 +87,7 @@ jobs:
         projectId: mailsage-erevl
         channelId: preview
         target: mailsageprod
+        entryPoint: '.'
       env:
         NODE_ENV: production
         NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
@@ -145,3 +146,4 @@ jobs:
         projectId: mailsage-erevl
         channelId: live
         target: mailsageprod
+        entryPoint: '.'
