@@ -35,29 +35,17 @@ describe('Gmail Integration Functional Tests', () => {
       const mockGmailMessages = [
         {
           id: '1',
-          threadId: 'thread-1',
-          labelIds: ['INBOX', 'IMPORTANT'],
+          sender: 'john@company.com',
+          subject: 'Project Update',
           snippet: 'Here is the latest project update...',
-          payload: {
-            headers: [
-              { name: 'Subject', value: 'Project Update' },
-              { name: 'From', value: 'john@company.com' },
-              { name: 'Date', value: '2024-01-15T10:00:00Z' }
-            ]
-          }
+          timestamp: 1705316400000 // 2024-01-15T10:00:00Z
         },
         {
           id: '2',
-          threadId: 'thread-2',
-          labelIds: ['INBOX'],
+          sender: 'sarah@client.com',
+          subject: 'Meeting Request',
           snippet: 'Can we schedule a meeting for next week?',
-          payload: {
-            headers: [
-              { name: 'Subject', value: 'Meeting Request' },
-              { name: 'From', value: 'sarah@client.com' },
-              { name: 'Date', value: '2024-01-15T11:30:00Z' }
-            ]
-          }
+          timestamp: 1705321800000 // 2024-01-15T11:30:00Z
         },
       ];
 
@@ -68,7 +56,10 @@ describe('Gmail Integration Functional Tests', () => {
       expect(mockFetchGmailMessages).toHaveBeenCalledWith('test-access-token', undefined, 10);
       expect(result).toHaveLength(2);
       expect(result[0].id).toBe('1');
+      expect(result[0].subject).toBe('Project Update');
+      expect(result[0].sender).toBe('john@company.com');
       expect(result[1].id).toBe('2');
+      expect(result[1].subject).toBe('Meeting Request');
     });
 
     test('should handle Gmail API rate limiting gracefully', async () => {
@@ -124,16 +115,10 @@ describe('Gmail Integration Functional Tests', () => {
       const mockGmailMessages = [
         {
           id: '1',
-          threadId: 'thread-1',
-          labelIds: ['INBOX', 'IMPORTANT'],
+          sender: 'boss@company.com',
+          subject: 'Important Update',
           snippet: 'Please review this important update...',
-          payload: {
-            headers: [
-              { name: 'Subject', value: 'Important Update' },
-              { name: 'From', value: 'boss@company.com' },
-              { name: 'Date', value: '2024-01-15T12:00:00Z' }
-            ]
-          }
+          timestamp: 1705323600000 // 2024-01-15T12:00:00Z
         }
       ];
 
@@ -165,7 +150,9 @@ describe('Gmail Integration Functional Tests', () => {
       // Verify workflow completion
       expect(messages).toHaveLength(1);
       expect(messages[0].id).toBe('1');
-      expect(messageBody.payload.body.data).toBeTruthy();
+      expect(messages[0].subject).toBe('Important Update');
+      expect(messages[0].sender).toBe('boss@company.com');
+      expect(messageBody).toBeTruthy();
 
       // Verify all services were called
       expect(mockFetchGmailMessages).toHaveBeenCalled();
