@@ -78,6 +78,28 @@ jobs:
         GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
         GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
     
+    - name: Deploy to Firebase App Hosting (Preview)
+      if: github.ref == 'refs/heads/feature/automated-testing-ci-cd' && matrix.node-version == '20.x'
+      uses: FirebaseExtended/action-hosting-deploy@v0
+      with:
+        repoToken: ${{ secrets.GITHUB_TOKEN }}
+        firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        projectId: mailsage-erevl
+        channelId: preview
+        target: mailsageprod
+      env:
+        NODE_ENV: production
+        NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+        NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+        GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+        GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+        GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+        GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+    
     - name: Upload coverage to Codecov
       if: matrix.node-version == '20.x'
       uses: codecov/codecov-action@v3
@@ -115,10 +137,11 @@ jobs:
         GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
         GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
     
-    - name: Deploy to Firebase
+    - name: Deploy to Firebase App Hosting
       uses: FirebaseExtended/action-hosting-deploy@v0
       with:
         repoToken: ${{ secrets.GITHUB_TOKEN }}
         firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+        projectId: mailsage-erevl
         channelId: live
+        target: mailsageprod
