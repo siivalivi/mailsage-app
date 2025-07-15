@@ -63,9 +63,9 @@ describe('Gmail Integration Functional Tests', () => {
 
       mockFetchGmailMessages.mockResolvedValue(mockGmailMessages);
 
-      const result = await fetchGmailMessages('test-access-token', 10);
+      const result = await fetchGmailMessages('test-access-token', undefined, 10);
 
-      expect(mockFetchGmailMessages).toHaveBeenCalledWith('test-access-token', 10);
+      expect(mockFetchGmailMessages).toHaveBeenCalledWith('test-access-token', undefined, 10);
       expect(result).toHaveLength(2);
       expect(result[0].id).toBe('1');
       expect(result[1].id).toBe('2');
@@ -74,13 +74,13 @@ describe('Gmail Integration Functional Tests', () => {
     test('should handle Gmail API rate limiting gracefully', async () => {
       mockFetchGmailMessages.mockRejectedValue(new Error('Rate limit exceeded'));
 
-      await expect(fetchGmailMessages('test-access-token', 10)).rejects.toThrow('Rate limit exceeded');
+      await expect(fetchGmailMessages('test-access-token', undefined, 10)).rejects.toThrow('Rate limit exceeded');
     });
 
     test('should handle authentication errors', async () => {
       mockFetchGmailMessages.mockRejectedValue(new Error('Authentication failed'));
 
-      await expect(fetchGmailMessages('test-access-token', 10)).rejects.toThrow('Authentication failed');
+      await expect(fetchGmailMessages('test-access-token', undefined, 10)).rejects.toThrow('Authentication failed');
     });
   });
 
@@ -159,7 +159,7 @@ describe('Gmail Integration Functional Tests', () => {
       mockFetchGmailMessageBody.mockResolvedValue(mockMessageBody);
 
       // Execute workflow
-      const messages = await fetchGmailMessages('test-access-token', 10);
+      const messages = await fetchGmailMessages('test-access-token', undefined, 10);
       const messageBody = await fetchGmailMessageBody('test-access-token', messages[0].id);
 
       // Verify workflow completion
@@ -177,7 +177,7 @@ describe('Gmail Integration Functional Tests', () => {
     test('should handle Gmail API quota exceeded', async () => {
       mockFetchGmailMessages.mockRejectedValue(new Error('Quota exceeded'));
 
-      await expect(fetchGmailMessages('test-access-token', 10)).rejects.toThrow('Quota exceeded');
+      await expect(fetchGmailMessages('test-access-token', undefined, 10)).rejects.toThrow('Quota exceeded');
     });
 
     test('should handle network connectivity issues', async () => {
@@ -189,7 +189,7 @@ describe('Gmail Integration Functional Tests', () => {
     test('should handle invalid OAuth tokens', async () => {
       mockFetchGmailMessages.mockRejectedValue(new Error('Invalid credentials'));
 
-      await expect(fetchGmailMessages('invalid-token', 10)).rejects.toThrow('Invalid credentials');
+      await expect(fetchGmailMessages('invalid-token', undefined, 10)).rejects.toThrow('Invalid credentials');
     });
   });
 });
