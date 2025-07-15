@@ -77,29 +77,15 @@ describe('Gmail Integration Functional Tests', () => {
 
   describe('Gmail Message Body Retrieval', () => {
     test('should fetch Gmail message body', async () => {
-      const mockMessageBody = {
-        id: '1',
-        threadId: 'thread-1',
-        payload: {
-          headers: [
-            { name: 'Subject', value: 'Quarterly Report' },
-            { name: 'From', value: 'finance@company.com' },
-            { name: 'Date', value: '2024-01-15T14:00:00Z' }
-          ],
-          body: {
-            data: 'UGxlYXNlIGZpbmQgdGhlIHF1YXJ0ZXJseSByZXBvcnQgYXR0YWNoZWQ=', // base64 encoded
-            size: 123
-          }
-        }
-      };
+      const mockMessageBody = 'Please find the quarterly report attached. This is the full email body content.';
 
       mockFetchGmailMessageBody.mockResolvedValue(mockMessageBody);
 
       const result = await fetchGmailMessageBody('test-access-token', '1');
 
       expect(mockFetchGmailMessageBody).toHaveBeenCalledWith('test-access-token', '1');
-      expect(result.id).toBe('1');
-      expect(result.payload.body.data).toBeTruthy();
+      expect(result).toBe(mockMessageBody);
+      expect(result).toContain('quarterly report');
     });
 
     test('should handle message not found', async () => {
@@ -123,21 +109,7 @@ describe('Gmail Integration Functional Tests', () => {
       ];
 
       // Mock message body
-      const mockMessageBody = {
-        id: '1',
-        threadId: 'thread-1',
-        payload: {
-          headers: [
-            { name: 'Subject', value: 'Important Update' },
-            { name: 'From', value: 'boss@company.com' },
-            { name: 'Date', value: '2024-01-15T12:00:00Z' }
-          ],
-          body: {
-            data: 'UGxlYXNlIHJldmlldyB0aGlzIGltcG9ydGFudCB1cGRhdGU=', // base64 encoded message
-            size: 456
-          }
-        }
-      };
+      const mockMessageBody = 'Please review this important update and provide feedback by tomorrow. This is the full email body content.';
 
       // Setup mocks
       mockFetchGmailMessages.mockResolvedValue(mockGmailMessages);
@@ -152,7 +124,8 @@ describe('Gmail Integration Functional Tests', () => {
       expect(messages[0].id).toBe('1');
       expect(messages[0].subject).toBe('Important Update');
       expect(messages[0].sender).toBe('boss@company.com');
-      expect(messageBody).toBeTruthy();
+      expect(messageBody).toBe('Please review this important update and provide feedback by tomorrow. This is the full email body content.');
+      expect(messageBody).toContain('important update');
 
       // Verify all services were called
       expect(mockFetchGmailMessages).toHaveBeenCalled();
