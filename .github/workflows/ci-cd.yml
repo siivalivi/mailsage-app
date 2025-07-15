@@ -79,7 +79,7 @@ jobs:
         GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
     
     - name: Deploy to Firebase App Hosting (Preview)
-      if: github.ref == 'refs/heads/feature/automated-testing-ci-cd' && matrix.node-version == '20.x'
+      if: github.ref == 'refs/heads/feature/automated-testing-ci-cd' && matrix.node-version == '20.x' && secrets.FIREBASE_SERVICE_ACCOUNT != ''
       uses: FirebaseExtended/action-hosting-deploy@v0
       with:
         repoToken: ${{ secrets.GITHUB_TOKEN }}
@@ -138,6 +138,7 @@ jobs:
         GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
     
     - name: Deploy to Firebase App Hosting
+      if: secrets.FIREBASE_SERVICE_ACCOUNT != ''
       uses: FirebaseExtended/action-hosting-deploy@v0
       with:
         repoToken: ${{ secrets.GITHUB_TOKEN }}
