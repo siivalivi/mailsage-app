@@ -13,6 +13,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:functional": "jest --testPathPattern=functional --runInBand",
+    "test:smoke": "jest --testPathPattern=functional --testNamePattern='should load|should authenticate|should connect' --runInBand",
     "test:unit": "jest --testPathPattern=unit",
     "test:integration": "jest --testPathPattern=integration",
     "test:e2e": "jest --testPathPattern=e2e --runInBand"
