@@ -81,6 +81,31 @@ jobs:
     # Firebase App Hosting handles deployment automatically via GitHub integration
     # No manual deployment needed - Firebase will deploy when code is pushed
     
+    - name: Wait for Firebase App Hosting deployment
+      if: github.ref == 'refs/heads/feature/automated-testing-ci-cd' && matrix.node-version == '20.x'
+      run: |
+        echo "Waiting for Firebase App Hosting to complete deployment..."
+        sleep 60  # Give Firebase time to deploy
+        
+    - name: Run functional tests against deployed app
+      if: github.ref == 'refs/heads/feature/automated-testing-ci-cd' && matrix.node-version == '20.x'
+      run: npm run test:functional
+      env:
+        NODE_ENV: production
+        TEST_BASE_URL: https://mailsage-erevl.web.app
+        NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+        NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+        GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+        GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+        GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+        GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+        TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+        TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+    
     - name: Upload coverage to Codecov
       if: matrix.node-version == '20.x'
       uses: codecov/codecov-action@v3
@@ -120,3 +145,26 @@ jobs:
     
     # Firebase App Hosting handles deployment automatically via GitHub integration
     # No manual deployment needed - Firebase will deploy when code is pushed to main
+    
+    - name: Wait for Firebase App Hosting deployment
+      run: |
+        echo "Waiting for Firebase App Hosting to complete deployment..."
+        sleep 90  # Give Firebase time to deploy to production
+        
+    - name: Run smoke tests against production
+      run: npm run test:functional
+      env:
+        NODE_ENV: production
+        TEST_BASE_URL: https://mailsage-erevl.web.app
+        NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+        NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+        GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+        GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+        GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+        GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+        TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+        TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
