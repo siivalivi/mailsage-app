@@ -91,7 +91,7 @@ jobs:
       if: github.ref == 'refs/heads/feature/automated-testing-ci-cd' && matrix.node-version == '20.x'
       run: npm run test:functional
       env:
-        NODE_ENV: production
+        NODE_ENV: test
         TEST_BASE_URL: https://mailsage-erevl.web.app
         NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
         NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
@@ -152,9 +152,9 @@ jobs:
         sleep 90  # Give Firebase time to deploy to production
         
     - name: Run smoke tests against production
-      run: npm run test:functional
+      run: npm run test:smoke
       env:
-        NODE_ENV: production
+        NODE_ENV: test
         TEST_BASE_URL: https://mailsage-erevl.web.app
         NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
         NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}

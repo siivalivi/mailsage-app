@@ -6,8 +6,26 @@
 import '@testing-library/jest-dom';
 import { setupTestEnvironment } from './tests/utils/test-utils';
 
+// Force test environment even when NODE_ENV=production
+process.env.NODE_ENV = 'test';
+
 // Set up test environment
 setupTestEnvironment();
+
+// Suppress React act() warnings in tests
+const originalError = console.error;
+beforeAll(() => {
+  console.error = (...args: any[]) => {
+    if (typeof args[0] === 'string' && args[0].includes('act(...)')) {
+      return;
+    }
+    originalError.call(console, ...args);
+  };
+});
+
+afterAll(() => {
+  console.error = originalError;
+});
 
 // Mock Next.js router
 jest.mock('next/router', () => ({
