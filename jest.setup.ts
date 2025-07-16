@@ -6,9 +6,6 @@
 import '@testing-library/jest-dom';
 import { setupTestEnvironment } from './tests/utils/test-utils';
 
-// Force test environment even when NODE_ENV=production
-process.env.NODE_ENV = 'test';
-
 // Set up test environment
 setupTestEnvironment();
 

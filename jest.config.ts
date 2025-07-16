@@ -12,6 +12,14 @@ const config: Config = {
   testEnvironment: 'jsdom',
   // Add more setup options before each test is run
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  testEnvironmentOptions: {
+    customExportConditions: ['node', 'node-addons'],
+  },
+  globals: {
+    'process.env': {
+      NODE_ENV: 'test',
+    },
+  },
   moduleNameMapper: {
     // Handle module aliases (this will be automatically configured by `next/jest` to match `tsconfig.json`)
     '^@/(.*)$': '<rootDir>/src/$1',
