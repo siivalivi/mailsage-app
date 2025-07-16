@@ -1,5 +1,5 @@
 
-'use server';
+
 
 import { generateDailyBriefing } from './generate-daily-briefing';
 import type { GenerateDailyBriefingInput } from './generate-daily-briefing';

@@ -18,6 +18,7 @@
     "test:e2e": "jest --testPathPattern=e2e --runInBand"
   },
   "dependencies": {
+    "@genkit-ai/firebase": "^1.8.0",
     "@genkit-ai/googleai": "^1.8.0",
     "@genkit-ai/next": "^1.8.0",
     "@hookform/resolvers": "^4.1.3",

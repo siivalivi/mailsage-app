@@ -1,4 +1,4 @@
-'use server';
+
 /**
  * @fileOverview A flow that extracts action items from an email.
  *

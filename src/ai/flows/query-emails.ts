@@ -1,5 +1,5 @@
 
-'use server';
+
 /**
  * @fileOverview A Genkit flow that uses an AI agent with tools to query a user's Gmail account.
  * This "agentic" flow presents the AI with a set of specialized tools, and the AI reasons

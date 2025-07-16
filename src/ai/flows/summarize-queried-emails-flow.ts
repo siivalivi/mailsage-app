@@ -1,5 +1,5 @@
 
-'use server';
+
 /**
  * @fileOverview A flow that generates an overall summary from a list of queried email summaries.
  *

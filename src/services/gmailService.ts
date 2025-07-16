@@ -1,6 +1,4 @@
 
-'use server';
-
 // This service interacts with the Gmail API.
 // It's designed to be called from a server environment (e.g., Genkit flow)
 // and requires a valid OAuth 2.0 access token for the user.

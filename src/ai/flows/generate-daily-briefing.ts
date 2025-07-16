@@ -1,4 +1,4 @@
-'use server';
+
 /**
  * @fileOverview A flow that generates a categorized daily briefing of emails.
  *

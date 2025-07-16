@@ -1,4 +1,4 @@
-'use server';
+
 /**
  * @fileOverview A flow that generates a draft reply to an email.
  *
