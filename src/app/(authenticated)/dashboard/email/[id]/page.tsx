@@ -26,6 +26,12 @@ const MOCK_EMAIL_DB: Record<string, Email> = {
   },
 };
 
+export function generateStaticParams() {
+  return [
+    { id: 'placeholder-initial-1' }
+  ];
+}
+
 
 export default function EmailPage() {
   const router = useRouter();
