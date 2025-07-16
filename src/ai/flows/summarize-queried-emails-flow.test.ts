@@ -1,3 +1,5 @@
+'use server';
+
 
 import { summarizeQueriedEmails } from './summarize-queried-emails-flow';
 import type { SummarizeQueriedEmailsInput } from './summarize-queried-emails-flow';

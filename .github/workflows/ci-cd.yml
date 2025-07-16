@@ -78,27 +78,14 @@ jobs:
         GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
         GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
     
-    - name: Deploy to Firebase Hosting (Preview)
+    - name: Deploy to Vercel (Preview)
       if: github.ref == 'refs/heads/feature/automated-testing-ci-cd' && matrix.node-version == '20.x'
-      uses: FirebaseExtended/action-hosting-deploy@v0
+      uses: amondnet/vercel-action@v25
       with:
-        repoToken: ${{ secrets.GITHUB_TOKEN }}
-        firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        projectId: mailsage-erevl
-        channelId: preview
-        entryPoint: '.'
-      env:
-        NODE_ENV: production
-        NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
-        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
-        NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
-        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
-        NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
-        GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
-        GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
-        GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
-        GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: ./
     
     - name: Upload coverage to Codecov
       if: matrix.node-version == '20.x'
@@ -137,11 +124,11 @@ jobs:
         GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
         GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
     
-    - name: Deploy to Firebase Hosting
-      uses: FirebaseExtended/action-hosting-deploy@v0
+    - name: Deploy to Vercel (Production)
+      uses: amondnet/vercel-action@v25
       with:
-        repoToken: ${{ secrets.GITHUB_TOKEN }}
-        firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        projectId: mailsage-erevl
-        channelId: live
-        entryPoint: '.'
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        vercel-args: '--prod'
+        working-directory: ./

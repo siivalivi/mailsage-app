@@ -1,3 +1,5 @@
+'use server';
+
 
 import { queryEmails } from './query-emails';
 import { ai } from '@/ai/genkit';

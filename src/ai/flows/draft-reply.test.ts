@@ -1,3 +1,5 @@
+'use server';
+
 import { draftReply, DraftReplyInput } from './draft-reply';
 import { ai } from '@/ai/genkit';
 

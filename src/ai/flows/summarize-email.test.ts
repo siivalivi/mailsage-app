@@ -1,3 +1,5 @@
+'use server';
+
 
 import { summarizeEmail } from './summarize-email';
 import { ai } from '@/ai/genkit';

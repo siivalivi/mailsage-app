@@ -1,3 +1,5 @@
+'use server';
+
 
 /**
  * @fileOverview A flow that summarizes a single email's content.

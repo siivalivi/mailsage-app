@@ -1,3 +1,5 @@
+'use server';
+
 import { extractActionItems, ExtractActionItemsInput } from './extract-action-items';
 import { ai } from '@/ai/genkit';
 
